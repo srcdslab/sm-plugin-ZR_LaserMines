@@ -136,23 +136,23 @@ public APLRes:AskPluginLoad2(Handle:myself, bool:late, String:error[], err_max)
 public OnPluginStart()
 {
 	// Creates console variable version
-	CreateConVar("zr_lasermines_version", PLUGIN_VERSION, "The version of the plugin", FCVAR_PLUGIN|FCVAR_SPONLY|FCVAR_REPLICATED|FCVAR_NOTIFY|FCVAR_CHEAT|FCVAR_DONTRECORD);
+	CreateConVar("zr_lasermines_version", PLUGIN_VERSION, "The version of the plugin", FCVAR_SPONLY|FCVAR_REPLICATED|FCVAR_NOTIFY|FCVAR_CHEAT|FCVAR_DONTRECORD);
 	
 	// Creates console variables
-	h_enable = CreateConVar("zr_lasermines_enable", "1", "Enables/Disables the plugin", FCVAR_PLUGIN|FCVAR_NOTIFY, true, 0.0, true, 1.0);
-	h_amount = CreateConVar("zr_lasermines_amount", "3", "The amount to give laser mines to a player each spawn (if buy mode is disabled, -1 = Infinity)", FCVAR_PLUGIN, true, -1.0);
-	h_maxamount = CreateConVar("zr_lasermines_maxamount", "3", "The maximum amount of laser mines a player can carry. (0-Unlimited)", FCVAR_PLUGIN, true, 0.0);
-	h_damage = CreateConVar("zr_lasermines_damage", "500", "The damage to deal to a player by the laser", FCVAR_PLUGIN, true, 1.0, true, 100000.0);
-	h_explode_damage = CreateConVar("zr_lasermines_explode_damage", "100", "The damage to deal to a player when a laser mine breaks", FCVAR_PLUGIN, true, 0.0, true, 100000.0);
-	h_explode_radius = CreateConVar("zr_lasermines_explode_radius", "300", "The radius of the explosion", FCVAR_PLUGIN, true, 1.0, true, 100000.0);
-	h_health = CreateConVar("zr_lasermines_health", "300", "The laser mines health. 0 = never breaked", FCVAR_PLUGIN, true, 0.0, true, 100000.0);
-	h_activate_time = CreateConVar("zr_lasermines_activatetime", "2", "The delay of laser mines' activation", FCVAR_PLUGIN, true, 0.0, true, 10.0);
-	h_use_buy_mode = CreateConVar("zr_lasermines_buymode", "1", "Enables buy mode. In this mode you will have to buy mines", FCVAR_PLUGIN|FCVAR_NOTIFY, true, 0.0, true, 1.0);
-	h_should_buy_zone = CreateConVar("zr_lasermines_buyzone", "1", "Whether a player have to stay in buy zone to buy mines", FCVAR_PLUGIN|FCVAR_NOTIFY, true, 0.0, true, 1.0);
-	h_price = CreateConVar("zr_lasermines_price", "500", "The price of the laser mines", FCVAR_PLUGIN|FCVAR_NOTIFY, true, 0.0);
-	h_color = CreateConVar("zr_lasermines_color", "0 0 255", "The laser's color. Set by RGB", FCVAR_PLUGIN);
-	h_allow_pickup = CreateConVar("zr_lasermines_allow_pickup", "1", "Allow players to pickup their planted lasermines", FCVAR_PLUGIN);
-	h_allow_friendly_pickup = CreateConVar("zr_lasermines_allow_friendly_pickup", "0", "Allow allies to pickup your planted lasermines", FCVAR_PLUGIN);
+	h_enable = CreateConVar("zr_lasermines_enable", "1", "Enables/Disables the plugin", FCVAR_NOTIFY, true, 0.0, true, 1.0);
+	h_amount = CreateConVar("zr_lasermines_amount", "3", "The amount to give laser mines to a player each spawn (if buy mode is disabled, -1 = Infinity)", _, true, -1.0);
+	h_maxamount = CreateConVar("zr_lasermines_maxamount", "3", "The maximum amount of laser mines a player can carry. (0-Unlimited)", _, true, 0.0);
+	h_damage = CreateConVar("zr_lasermines_damage", "500", "The damage to deal to a player by the laser", _, true, 1.0, true, 100000.0);
+	h_explode_damage = CreateConVar("zr_lasermines_explode_damage", "100", "The damage to deal to a player when a laser mine breaks", _, true, 0.0, true, 100000.0);
+	h_explode_radius = CreateConVar("zr_lasermines_explode_radius", "300", "The radius of the explosion", _, true, 1.0, true, 100000.0);
+	h_health = CreateConVar("zr_lasermines_health", "300", "The laser mines health. 0 = never breaked", _, true, 0.0, true, 100000.0);
+	h_activate_time = CreateConVar("zr_lasermines_activatetime", "2", "The delay of laser mines' activation", _, true, 0.0, true, 10.0);
+	h_use_buy_mode = CreateConVar("zr_lasermines_buymode", "1", "Enables buy mode. In this mode you will have to buy mines", FCVAR_NOTIFY, true, 0.0, true, 1.0);
+	h_should_buy_zone = CreateConVar("zr_lasermines_buyzone", "1", "Whether a player have to stay in buy zone to buy mines", FCVAR_NOTIFY, true, 0.0, true, 1.0);
+	h_price = CreateConVar("zr_lasermines_price", "500", "The price of the laser mines", FCVAR_NOTIFY, true, 0.0);
+	h_color = CreateConVar("zr_lasermines_color", "0 0 255", "The laser's color. Set by RGB");
+	h_allow_pickup = CreateConVar("zr_lasermines_allow_pickup", "1", "Allow players to pickup their planted lasermines");
+	h_allow_friendly_pickup = CreateConVar("zr_lasermines_allow_friendly_pickup", "0", "Allow allies to pickup your planted lasermines");
 	
 	// Gets them to the global
 	b_enable = GetConVarBool(h_enable);
@@ -210,9 +210,9 @@ public OnPluginStart()
 	LoadTranslations("zr_lasermines.phrases");
 	
 	// Finds offsets
-	if ((gInBuyZone = FindSendPropOffs("CCSPlayer", "m_bInBuyZone")) == -1)
+	if ((gInBuyZone = FindSendPropInfo("CCSPlayer", "m_bInBuyZone")) == -1)
 		SetFailState("Could not find offset \"m_bInBuyZone\"");
-	if ((gAccount = FindSendPropOffs("CCSPlayer", "m_iAccount")) == -1)
+	if ((gAccount = FindSendPropInfo("CCSPlayer", "m_iAccount")) == -1)
 		SetFailState("Could not find offset \"m_iAccount\"");
 	
 	AutoExecConfig(true, "zombiereloaded/zr_lasermines");
