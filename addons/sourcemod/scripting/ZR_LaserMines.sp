@@ -1,436 +1,229 @@
-#pragma semicolon 1
+/************************
+	Original author: FrozDark
+	Edited by: ire.
+************************/
 
-/*
-			I N C L U D E S
-	------------------------------------------------
-*/
 #include <sourcemod>
 #include <sdktools>
 #include <sdkhooks>
+#include <cstrike>
 #include <zombiereloaded>
 #include <zr_lasermines>
-/*
-	------------------------------------------------
-*/
+#include <multicolors>
 
-/*
-			D E F I N E S
-	------------------------------------------------
-*/
+#pragma tabsize 0
+#pragma semicolon 1
+#pragma newdecls required
+
 #define PLUGIN_VERSION "1.4.2"
 
 #define MDL_LASER "sprites/laser.vmt"
 #define MDL_MINE "models/props_lab/tpplug.mdl"
 
-#define SND_MINEPUT "npc/roller/blade_cut.wav"
-#define SND_MINEACT "npc/roller/mine/rmine_blades_in2.wav"
-#define SND_BUYMINE "items/itempickup.wav"
-#define SND_CANTBUY "buttons/weapon_cant_buy.wav"
-/*
-	------------------------------------------------
-*/
+#define SND_PUTMINE "npc/roller/blade_cut.wav"
+#define SND_MINEACTIVATED "npc/roller/mine/rmine_blades_in2.wav"
+#define SND_PICKUPMINE "items/itempickup.wav"
 
+ConVar g_cvSpawnMineAmount;
+ConVar g_cvMaxMineAmount;
+ConVar g_cvMineDamage;
+ConVar g_cvMineExplodeDamage;
+ConVar g_cvMineExplodeRadius;
+ConVar g_cvMineActivationTime;
+ConVar g_cvAllowPickup;
 
-/*
-		|G|  |L| |O| |B| |A| |L| |S|
-	------------------------------------------------
-*/
+int g_iAmount;
+int g_iMaxAmount;
+int g_iDamage;
+int g_iExplodeDamage;
+int g_iExplodeRadius;
+int g_iClientsAmount[MAXPLAYERS+1];
+int g_iClientsMyAmount[MAXPLAYERS+1];
+int g_iClientsMaxLimit[MAXPLAYERS+1];
+int g_iUsedByNative[MAXPLAYERS+1];
 
-new Handle:h_enable, bool:b_enable,
-	Handle:h_amount, i_amount,
-	Handle:h_maxamount, i_maxamount,
-	Handle:h_damage, i_damage,
-	Handle:h_explode_damage, i_explode_damage,
-	Handle:h_explode_radius, i_explode_radius,
-	Handle:h_health, i_health,
-	Handle:h_color, String:s_color[16], i_color[3],
-	Handle:h_activate_time, Float:f_activate_time,
-	Handle:h_use_buy_mode, bool:b_use_buy_mode,
-	Handle:h_should_buy_zone, bool:b_should_buy_zone,
-	Handle:h_allow_pickup, bool:b_allow_pickup,
-	Handle:h_allow_friendly_pickup, bool:b_allow_friendly_pickup,
-Handle:h_price, i_price;
+float fActivationTime;
 
-/*
-		F O R W A R D S
-	------------------------------------------------
-*/
-new Handle:h_fwdOnPlantLasermine,
-	Handle:h_fwdOnLaserminePlanted,
-	Handle:h_fwdOnPreHitByLasermine,
-	Handle:h_fwdOnPostHitByLasermine,
-	Handle:h_fwdOnPreBuyLasermine,
-	Handle:h_fwdOnPostBuyLasermine,
-	Handle:h_fwdOnPrePickupLasermine,
-	Handle:h_fwdOnPostPickupLasermine;
+bool g_bAllowPickup;
+bool g_bLate;
 
-/*
-	------------------------------------------------
-*/
-
-new i_clients_amount[MAXPLAYERS+1],
-	i_clients_myamount[MAXPLAYERS+1],
-	i_clients_maxlimit[MAXPLAYERS+1],
-	b_used_by_native[MAXPLAYERS+1],
-	i_buy_limit[MAXPLAYERS+1];
-
-new gInBuyZone = -1;
-new gAccount = -1;
-
-/*
-			P L U G I N    I N F O
-	------------------------------------------------
-*/
-
-public Plugin:myinfo = 
+public Plugin myinfo = 
 {
 	name = "[ZR] Lasermines",
-	author = "FrozDark (HLModders.ru LLC)",
+	author = "FrozDark (HLModders.ru LLC), ire.",
 	description = "Plants a laser mine",
 	version = PLUGIN_VERSION,
 	url = "http://www.hlmod.ru/"
 };
 
-new bool:b_late;
-/*
-	Fires when the plugin is asked to be loaded
-	-------------------------------------------------------
-*/
-public APLRes:AskPluginLoad2(Handle:myself, bool:late, String:error[], err_max)
+public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max)
 {
 	CreateNative("ZR_AddClientLasermines", Native_AddMines);
 	CreateNative("ZR_SetClientLasermines", Native_SetMines);
 	CreateNative("ZR_SubClientLasermines", Native_SubstractMines);
 	CreateNative("ZR_GetClientLasermines", Native_GetMines);
-	CreateNative("ZR_PlantClientLasermine", Native_PlantMine);
 	CreateNative("ZR_ClearMapClientLasermines", Native_ClearMapMines);
 	CreateNative("ZR_IsEntityLasermine", Native_IsLasermine);
 	CreateNative("ZR_GetClientByLasermine", Native_GetClientByLasermine);
 	CreateNative("ZR_SetClientMaxLasermines", Native_SetClientMaxLasermines);
 	CreateNative("ZR_GetBeamByLasermine", Native_GetBeamByLasermine);
 	CreateNative("ZR_GetLasermineByBeam", Native_GetLasermineByBeam);
-	
-	h_fwdOnPlantLasermine = CreateGlobalForward("ZR_OnPlantLasermine", ET_Hook, Param_Cell, Param_FloatByRef, Param_CellByRef, Param_CellByRef, Param_CellByRef, Param_Array);
-	h_fwdOnLaserminePlanted = CreateGlobalForward("ZR_OnLaserminePlanted", ET_Ignore, Param_Cell, Param_Cell, Param_Float, Param_Cell, Param_Cell, Param_Cell, Param_Array);
-	
-	h_fwdOnPreHitByLasermine = CreateGlobalForward("ZR_OnPreHitByLasermine", ET_Hook, Param_Cell, Param_CellByRef, Param_CellByRef, Param_CellByRef, Param_CellByRef);
-	h_fwdOnPostHitByLasermine = CreateGlobalForward("ZR_OnPostHitByLasermine", ET_Ignore, Param_Cell, Param_Cell, Param_Cell, Param_Cell, Param_Cell);
-	
-	h_fwdOnPreBuyLasermine = CreateGlobalForward("ZR_OnPreBuyLasermine", ET_Hook, Param_Cell, Param_CellByRef, Param_CellByRef);
-	h_fwdOnPostBuyLasermine = CreateGlobalForward("ZR_OnPostBuyLasermine", ET_Ignore, Param_Cell, Param_Cell, Param_Cell);
-	
-	h_fwdOnPrePickupLasermine = CreateGlobalForward("ZR_OnPrePickupLasermine", ET_Event, Param_Cell, Param_Cell, Param_Cell);
-	h_fwdOnPostPickupLasermine = CreateGlobalForward("ZR_OnPostPickupLasermine", ET_Ignore, Param_Cell, Param_Cell, Param_Cell);
-	
+
 	RegPluginLibrary("zr_lasermines");
-	
-	b_late = late;
-	
+
+	g_bLate = late;
+
 	return APLRes_Success;
 }
 
-/*
-		Fires when the plugin start
-	------------------------------------------------
-*/
-public OnPluginStart()
-{
-	// Creates console variable version
-	CreateConVar("zr_lasermines_version", PLUGIN_VERSION, "The version of the plugin", FCVAR_SPONLY|FCVAR_REPLICATED|FCVAR_NOTIFY|FCVAR_CHEAT|FCVAR_DONTRECORD);
-	
-	// Creates console variables
-	h_enable = CreateConVar("zr_lasermines_enable", "1", "Enables/Disables the plugin", FCVAR_NOTIFY, true, 0.0, true, 1.0);
-	h_amount = CreateConVar("zr_lasermines_amount", "3", "The amount to give laser mines to a player each spawn (if buy mode is disabled, -1 = Infinity)", _, true, -1.0);
-	h_maxamount = CreateConVar("zr_lasermines_maxamount", "3", "The maximum amount of laser mines a player can carry. (0-Unlimited)", _, true, 0.0);
-	h_damage = CreateConVar("zr_lasermines_damage", "500", "The damage to deal to a player by the laser", _, true, 1.0, true, 100000.0);
-	h_explode_damage = CreateConVar("zr_lasermines_explode_damage", "100", "The damage to deal to a player when a laser mine breaks", _, true, 0.0, true, 100000.0);
-	h_explode_radius = CreateConVar("zr_lasermines_explode_radius", "300", "The radius of the explosion", _, true, 1.0, true, 100000.0);
-	h_health = CreateConVar("zr_lasermines_health", "300", "The laser mines health. 0 = never breaked", _, true, 0.0, true, 100000.0);
-	h_activate_time = CreateConVar("zr_lasermines_activatetime", "2", "The delay of laser mines' activation", _, true, 0.0, true, 10.0);
-	h_use_buy_mode = CreateConVar("zr_lasermines_buymode", "1", "Enables buy mode. In this mode you will have to buy mines", FCVAR_NOTIFY, true, 0.0, true, 1.0);
-	h_should_buy_zone = CreateConVar("zr_lasermines_buyzone", "1", "Whether a player have to stay in buy zone to buy mines", FCVAR_NOTIFY, true, 0.0, true, 1.0);
-	h_price = CreateConVar("zr_lasermines_price", "500", "The price of the laser mines", FCVAR_NOTIFY, true, 0.0);
-	h_color = CreateConVar("zr_lasermines_color", "0 0 255", "The laser's color. Set by RGB");
-	h_allow_pickup = CreateConVar("zr_lasermines_allow_pickup", "1", "Allow players to pickup their planted lasermines");
-	h_allow_friendly_pickup = CreateConVar("zr_lasermines_allow_friendly_pickup", "0", "Allow allies to pickup your planted lasermines");
-	
-	// Gets them to the global
-	b_enable = GetConVarBool(h_enable);
-	i_amount = GetConVarInt(h_amount);
-	i_maxamount = GetConVarInt(h_maxamount);
-	i_damage = GetConVarInt(h_damage);
-	i_explode_damage = GetConVarInt(h_explode_damage);
-	i_explode_radius = GetConVarInt(h_explode_radius);
-	i_health = GetConVarInt(h_health);
-	f_activate_time = GetConVarFloat(h_activate_time);
-	b_use_buy_mode = GetConVarBool(h_use_buy_mode);
-	b_should_buy_zone = GetConVarBool(h_should_buy_zone);
-	i_price = GetConVarInt(h_price);
-	b_allow_pickup = GetConVarBool(h_allow_pickup);
-	b_allow_friendly_pickup = GetConVarBool(h_allow_friendly_pickup);
-	
-	GetConVarString(h_color, s_color, sizeof(s_color));
-	
-	StringToColor(s_color, i_color, 255);
-	
-	// Hooks their change
-	HookConVarChange(h_enable, OnConVarChanged);
-	HookConVarChange(h_amount, OnConVarChanged);
-	HookConVarChange(h_maxamount, OnConVarChanged);
-	HookConVarChange(h_damage, OnConVarChanged);
-	HookConVarChange(h_explode_damage, OnConVarChanged);
-	HookConVarChange(h_explode_radius, OnConVarChanged);
-	HookConVarChange(h_health, OnConVarChanged);
-	HookConVarChange(h_activate_time, OnConVarChanged);
-	HookConVarChange(h_use_buy_mode, OnConVarChanged);
-	HookConVarChange(h_should_buy_zone, OnConVarChanged);
-	HookConVarChange(h_price, OnConVarChanged);
-	HookConVarChange(h_color, OnConVarChanged);
-	HookConVarChange(h_allow_pickup, OnConVarChanged);
-	HookConVarChange(h_allow_friendly_pickup, OnConVarChanged);
-	
-	// Hooks event changes
+public void OnPluginStart()
+{	
+	g_cvSpawnMineAmount = CreateConVar("zr_lasermines_amount", "2", "The amount to give laser mines to a player each spawn (-1 = Infinity)", _, true, -1.0);
+	g_cvMaxMineAmount = CreateConVar("zr_lasermines_maxamount", "2", "The maximum amount of laser mines a player can carry. (0-Unlimited)", _, true, 0.0);
+	g_cvMineDamage = CreateConVar("zr_lasermines_damage", "1", "The damage to deal to a player by the laser", _, true, 1.0, true, 100000.0);
+	g_cvMineExplodeDamage = CreateConVar("zr_lasermines_explode_damage", "100", "The damage to deal to a player when a laser mine breaks", _, true, 0.0, true, 100000.0);
+	g_cvMineExplodeRadius = CreateConVar("zr_lasermines_explode_radius", "300", "The radius of the explosion", _, true, 1.0, true, 100000.0);
+	g_cvMineActivationTime = CreateConVar("zr_lasermines_activatetime", "2", "The delay of laser mines' activation", _, true, 0.0, true, 10.0);
+	g_cvAllowPickup = CreateConVar("zr_lasermines_allow_pickup", "1", "Allow players to pickup their planted lasermines");
+
+	HookConVarChange(g_cvSpawnMineAmount, OnConVarChanged);
+	HookConVarChange(g_cvMaxMineAmount, OnConVarChanged);
+	HookConVarChange(g_cvMineDamage, OnConVarChanged);
+	HookConVarChange(g_cvMineExplodeDamage, OnConVarChanged);
+	HookConVarChange(g_cvMineExplodeRadius, OnConVarChanged);
+	HookConVarChange(g_cvMineActivationTime, OnConVarChanged);
+	HookConVarChange(g_cvAllowPickup, OnConVarChanged);
+
 	HookEvent("player_spawn", OnPlayerSpawn);
 	HookEvent("player_death", OnPlayerDeath);
 	HookEvent("player_death", OnPlayerDeath_Pre, EventHookMode_Pre);
-	
-	// Registers new console commands
+
 	RegConsoleCmd("sm_laser", Command_PlantMine, "Plant a laser mine");
 	RegConsoleCmd("sm_plant", Command_PlantMine, "Plant a laser mine");
 	RegConsoleCmd("sm_lm", Command_PlantMine, "Plant a laser mine");
-	
-	RegConsoleCmd("sm_buylm", Command_BuyMines, "Buy laser mines");
-	RegConsoleCmd("sm_blm", Command_BuyMines, "Buy laser mines");
-	RegConsoleCmd("sm_bm", Command_BuyMines, "Buy laser mines");
-	
-	// Hooks entity env_beam ouput events
+
+	AddCommandListener(OnSpec, "sm_spec");
+	AddCommandListener(OnSpec, "sm_spectate");
+
 	HookEntityOutput("env_beam", "OnTouchedByEntity", OnTouchedByEntity);
-	
-	// Loads the translation
+
 	LoadTranslations("zr_lasermines.phrases");
-	
-	// Finds offsets
-	if ((gInBuyZone = FindSendPropInfo("CCSPlayer", "m_bInBuyZone")) == -1)
-		SetFailState("Could not find offset \"m_bInBuyZone\"");
-	if ((gAccount = FindSendPropInfo("CCSPlayer", "m_iAccount")) == -1)
-		SetFailState("Could not find offset \"m_iAccount\"");
-	
-	AutoExecConfig(true, "zombiereloaded/zr_lasermines");
-	
-	if (b_late)
+
+	AutoExecConfig(true);
+
+	if(g_bLate)
 	{
-		b_late = false;
+		g_bLate = false;
 		OnMapStart();
 	}
 }
-/*
-	------------------------------------------------
-*/
 
-/*
-			Cvars changes
-	------------------------------------------------
-*/
-public OnConVarChanged(Handle:convar, const String:oldValue[], const String:newValue[])
-{
-	if (convar == h_enable)
-	{
-		b_enable = bool:StringToInt(newValue);
-	}
-	else if (convar == h_amount)
-	{
-		i_amount = StringToInt(newValue);
-		LookupClients();
-	}
-	else if (convar == h_maxamount)
-	{
-		i_maxamount = StringToInt(newValue);
-		LookupClients();
-	}
-	else if (convar == h_damage)
-	{
-		i_damage = StringToInt(newValue);
-	}
-	else if (convar == h_explode_damage)
-	{
-		i_explode_damage = StringToInt(newValue);
-	}
-	else if (convar == h_explode_radius)
-	{
-		i_explode_radius = StringToInt(newValue);
-	}
-	else if (convar == h_health)
-	{
-		i_health = StringToInt(newValue);
-	}
-	else if (convar == h_activate_time)
-	{
-		f_activate_time = StringToFloat(newValue);
-	}
-	else if (convar == h_use_buy_mode)
-	{
-		b_use_buy_mode = bool:StringToInt(newValue);
-	}
-	else if (convar == h_should_buy_zone)
-	{
-		b_should_buy_zone = bool:StringToInt(newValue);
-	}
-	else if (convar == h_price)
-	{
-		i_price = StringToInt(newValue);
-	}
-	else if (convar == h_color)
-	{
-		strcopy(s_color, sizeof(s_color), newValue);
-		StringToColor(s_color, i_color, 255);
-	}
-	else if (convar == h_allow_pickup)
-	{
-		b_allow_pickup = bool:StringToInt(newValue);
-	}
-	else if (convar == h_allow_friendly_pickup)
-	{
-		b_allow_friendly_pickup = bool:StringToInt(newValue);
-	}
-}
-
-LookupClients()
-{
-	for (new i = 1; i <= MaxClients; i++)
-	{
-		OnClientConnected(i);
-	}
-}
-
-
-/*
-		Fires when the map starts
-	------------------------------------------------
-*/
-public OnMapStart()
+public void OnMapStart()
 {
 	PrecacheModel(MDL_MINE, true);
 	PrecacheModel(MDL_LASER, true);
 
-	PrecacheSound(SND_MINEPUT, true);
-	PrecacheSound(SND_MINEACT, true);
-	PrecacheSound(SND_BUYMINE, true);
-	PrecacheSound(SND_CANTBUY, true);
+	PrecacheSound(SND_PUTMINE, true);
+	PrecacheSound(SND_MINEACTIVATED, true);
+	PrecacheSound(SND_PICKUPMINE, true);
+	
+	OnConfigsExecuted();
 }
-/*
-	------------------------------------------------
-*/
 
-public OnClientConnected(client)
+public void OnConVarChanged(ConVar convar, const char[] oldValue, const char[] newValue)
 {
-	if (!b_used_by_native[client])
+	OnConfigsExecuted();
+}
+
+public void OnConfigsExecuted()
+{
+	g_iAmount = g_cvSpawnMineAmount.IntValue;
+	g_iMaxAmount = g_cvMaxMineAmount.IntValue;
+	g_iDamage = g_cvMineDamage.IntValue;
+	g_iExplodeDamage = g_cvMineExplodeDamage.IntValue;
+	g_iExplodeRadius = g_cvMineExplodeRadius.IntValue;
+	fActivationTime = g_cvMineActivationTime.FloatValue;
+	g_bAllowPickup = g_cvAllowPickup.BoolValue;
+}
+
+public void OnClientConnected(int client)
+{
+	if(!g_iUsedByNative[client])
 	{
-		i_clients_maxlimit[client] = i_maxamount;
-		i_clients_myamount[client] = i_amount;
+		g_iClientsMaxLimit[client] = g_iMaxAmount;
+		g_iClientsMyAmount[client] = g_iAmount;
 	}
 }
 
-/*
-	Fires when a client disconnects
-	------------------------------------------------
-*/
-public OnClientDisconnect(client)
+public void OnClientDisconnect(int client)
 {
-	i_buy_limit[client] = 0;
-	for (new index = MaxClients+1; index <= 2048; index++)
+	int iMaxEdicts = GetMaxEntities();
+	for(int i = MaxClients+1; i <= iMaxEdicts; i++)
 	{
-		if (ZR_GetClientByLasermine(index) == client)
+		if(ZR_GetClientByLasermine(i) == client)
 		{
-			SDKUnhook(index, SDKHook_OnTakeDamage, OnTakeDamage);
-			AcceptEntityInput(index, "KillHierarchy");
+			SDKUnhook(i, SDKHook_OnTakeDamage, OnTakeDamage);
+			AcceptEntityInput(i, "KillHierarchy");
 		}
 	}
+	
+	g_iClientsAmount[client] = 0;
+	g_iUsedByNative[client] = false;
 }
 
-/*
-	Fires when a client fully disconnected
-	------------------------------------------------
-*/
-public OnClientDisconnect_Post(client)
-{
-	i_clients_amount[client] = 0;
-	b_used_by_native[client] = false;
-}
-
-/*
-			Touch event
-	------------------------------------------------
-*/
-public OnTouchedByEntity(const String:output[], caller, activator, Float:delay)
+public void OnTouchedByEntity(const char[] output, int caller, int activator, float delay)
 {
 	if (!(1 <= activator <= MaxClients))
 	{
 		return;
 	}
-	new owner = GetEntPropEnt(caller, Prop_Data, "m_hOwnerEntity");
-	new lasermine = ZR_GetLasermineByBeam(caller);
-	if (owner == -1 || lasermine == -1  || activator == owner || ZR_IsClientHuman(activator))
+	
+	int g_iOwner = GetEntPropEnt(caller, Prop_Data, "m_hOwnerEntity");
+	int g_iLasermine = ZR_GetLasermineByBeam(caller);
+	
+	if (g_iOwner == -1 || g_iLasermine == -1  || activator == g_iOwner || ZR_IsClientHuman(activator))
 	{
 		return;
 	}
 	
-	decl damage, dummy_caller, dummy_owner, dummy_lasermine;
-	damage = i_damage;
-	dummy_caller = caller;
-	dummy_owner = owner;
-	dummy_lasermine = lasermine;
+	int g_iDummyDamage;
+	int g_iDummyCaller;
+	int g_iDummyOwner;
+	int g_iDummyLasermine;
 	
-	new Action:result = Forward_OnPreHit(activator, dummy_owner, dummy_caller, dummy_lasermine, damage);
+	g_iDummyDamage = g_iDamage;
+	g_iDummyCaller = caller;
+	g_iDummyOwner = g_iOwner;
+	g_iDummyLasermine = g_iLasermine;
 	
-	switch (result)
-	{
-		case Plugin_Handled, Plugin_Stop :
-		{
-			return;
-		}
-		case Plugin_Continue :
-		{
-			damage = i_damage;
-			dummy_caller = caller;
-			dummy_owner = owner;
-			dummy_lasermine = lasermine;
-		}
-	}
+	float fVelocity[3];
+	GetEntPropVector(activator, Prop_Data, "m_vecVelocity", fVelocity);
 	
-	decl Float:m_vecVelocity[3];
-	GetEntPropVector(activator, Prop_Data, "m_vecVelocity", m_vecVelocity);
+	SDKHooks_TakeDamage(activator, g_iDummyCaller, g_iDummyOwner, float(g_iDummyDamage), DMG_ENERGYBEAM);
 	
-	// Make custom damage to the client
-	SDKHooks_TakeDamage(activator, dummy_caller, dummy_owner, float(damage), DMG_ENERGYBEAM);
-	
-	TeleportEntity(activator, NULL_VECTOR, NULL_VECTOR, m_vecVelocity);
-	
-	Forward_OnPostHit(activator, dummy_owner, dummy_caller, dummy_lasermine, damage);
+	TeleportEntity(activator, NULL_VECTOR, NULL_VECTOR, fVelocity);
 }
 
-public OnPlayerSpawn(Handle:event, const String:name[], bool:dontBroadcast)
+public void OnPlayerSpawn(Event event, const char[] name, bool dontBroadcast)
 {
-	new client = GetClientOfUserId(GetEventInt(event, "userid"));
-	if (!b_use_buy_mode)
-	{
-		i_clients_amount[client] = i_clients_myamount[client];
-	}
+	int client = GetClientOfUserId(GetEventInt(event, "userid"));
+	g_iClientsAmount[client] = g_iClientsMyAmount[client];
 }
 
-public OnPlayerDeath(Handle:event, const String:name[], bool:dontBroadcast)
+public void OnPlayerDeath(Event event, const char[] name, bool dontBroadcast)
 {
-	new client = GetClientOfUserId(GetEventInt(event, "userid"));
+	int client = GetClientOfUserId(GetEventInt(event, "userid"));
 	OnClientDisconnect(client);
 }
 
-public Action:OnPlayerDeath_Pre(Handle:event, const String:name[], bool:dontBroadcast)
+public Action OnPlayerDeath_Pre(Event event, const char[] name, bool dontBroadcast)
 {
-	new attacker = GetClientOfUserId(GetEventInt(event, "attacker"));
+	int attacker = GetClientOfUserId(GetEventInt(event, "attacker"));
 	if (1 <= attacker <= MaxClients)
 	{
-		decl String:g_szWeapon[32];
-		GetEventString(event, "weapon", g_szWeapon, sizeof(g_szWeapon));
-		if (StrEqual(g_szWeapon, "env_beam"))
+		char Weapon[32];
+		GetEventString(event, "weapon", Weapon, sizeof(Weapon));
+		if(StrEqual(Weapon, "env_beam"))
 		{
 			SetEventString(event, "weapon", "shieldgun");
 		}
@@ -438,435 +231,312 @@ public Action:OnPlayerDeath_Pre(Handle:event, const String:name[], bool:dontBroa
 	return Plugin_Continue;
 }
 
-public ZR_OnClientInfected(client, attacker, bool:motherInfect, bool:respawnOverride, bool:respawn)
+public void ZR_OnClientInfected(int client, int attacker, bool motherInfect, bool respawnOverride, bool respawn)
 {
 	OnClientDisconnect(client);
 }
 
-/*
-	------------------------------------------------
-*/
-public Action:Command_BuyMines(client, argc)
+public Action OnSpec(int client, const char[] command, int argc)
 {
-	// client = 0	or	disabled	or	buy mode disabled	or	unlimited amount	or	client is not in game
-	if (!client || !b_enable || !b_use_buy_mode || i_clients_myamount[client] == -1 || !IsClientInGame(client))
-	{
-		return Plugin_Continue;	// Stop trigger the command
-	}
-	// client is dead
-	if (!IsPlayerAlive(client))
-	{
-		PrintHintText(client, "%t", "Can't buy, while dead");
-		return Plugin_Handled;	// Stop trigger the command
-	}
-	// client is spectator
-	if (GetClientTeam(client) <= 1)
-	{
-		PrintHintText(client, "%t", "Can't use, while spec");
-		return Plugin_Handled;	// Stop trigger the command
-	}
-	// client is zombie
-	if (ZR_IsClientZombie(client))
-	{
-		PrintHintText(client, "%t", "Can't buy, while zombie");
-		return Plugin_Handled;	// Stop trigger the command
-	}
-	// If buy zone mode is enabled and player is out of buy zone range
-	if (b_should_buy_zone && !bool:GetEntData(client, gInBuyZone, 1))
-	{
-		PrintHintText(client, "%t", "Out of buy zone");
-		return Plugin_Handled;	// Stop trigger the command
-	}
-	
-	new amount = 1;
-	if (argc)
-	{
-		decl String:txt[6];
-		GetCmdArg(1, txt, sizeof(txt));
-		amount = StringToInt(txt);
-		if (bool:i_clients_maxlimit[client])
-		{
-			if (amount > i_clients_maxlimit[client])
-			{
-				amount = i_clients_maxlimit[client];
-			}
-			else if (amount < 1)
-			{
-				amount = 1;
-			}
-		}
-	}
-	
-	decl dummy_amount, cost, boughtamount;
-	dummy_amount = amount;
-	cost = i_price;
-	boughtamount = 0;
-	new Action:result = Forward_OnPreBuy(client, dummy_amount, cost);
-	
-	switch (result)
-	{
-		case Plugin_Handled, Plugin_Stop :
-		{
-			return result;
-		}
-		case Plugin_Continue :
-		{
-			dummy_amount = amount;
-			cost = i_price;
-		}
-	}
-	
-	new money = GetEntData(client, gAccount);
-	do
-	{
-		if (bool:i_clients_maxlimit[client] && (i_clients_amount[client] >= i_clients_maxlimit[client]) || (i_buy_limit[client] >= i_clients_maxlimit[client]))
-		{
-			PrintHintText(client, "%t", "Can't buy, max amount", i_clients_maxlimit[client]);
-			return Plugin_Handled;
-		}
-		
-		money -= cost;
-		
-		if (money < 0)
-		{
-			PrintHintText(client, "%t", "Can't buy, not enough money", i_clients_amount[client]);
-			EmitSoundToClient(client, SND_CANTBUY);
-			return Plugin_Handled;
-		}
-		SetEntData(client, gAccount, money);
-		i_clients_amount[client]++;
-		boughtamount++;
-	} while (--dummy_amount);
-	
-	if (boughtamount)
-	{
-		PrintHintText(client, "%t", "Mines", i_clients_amount[client]);
-		EmitSoundToClient(client, SND_BUYMINE);
-		Forward_OnPostBuy(client, boughtamount, boughtamount*cost);
-	}
-	
-	return Plugin_Handled;
+	OnClientDisconnect(client);
 }
 
-/*
-	------------------------------------------------
-*/
-public Action:Command_PlantMine(client, argc)
+public Action Command_PlantMine(int client, int argc)
 {
-	if (!client || !b_enable || !IsClientInGame(client))
+	if(!IsValidClient(client))
 	{
-		return Plugin_Continue;
+		CPrintToChat(client, "%t", "You can't use lasermines");
+		return Plugin_Handled;
 	}
 	
-	if (!AccessToLasermines(client))
+	if(!AccessToLasermines(client))
+	{
+		CPrintToChat(client, "%t", "You don't have access to lasermines");
+		return Plugin_Handled;
+	}
+	
+	if(!g_iClientsAmount[client])
+	{
+		PrintHintText(client, "%t", "Mines", g_iClientsAmount[client]);
+		return Plugin_Handled;
+	}
+	
+	float fDelayTime;
+	int g_iDummyDamage;
+	int g_iDummyRadius;
+	int g_iDummyColor[3];
+	int g_iMine;
+	
+	fDelayTime = fActivationTime;
+	g_iDummyDamage = g_iExplodeDamage;
+	g_iDummyRadius = g_iExplodeRadius;
+	g_iDummyColor = {0, 0, 255};
+	
+	if((g_iMine = PlantMine(client, fDelayTime, g_iDummyDamage, g_iDummyRadius, g_iDummyColor)) == -1)
 	{
 		return Plugin_Handled;
 	}
 	
-	if (!i_clients_amount[client])
+	switch(g_iClientsAmount[client])
 	{
-		PrintHintText(client, "%t", "Mines", i_clients_amount[client]);
-		return Plugin_Handled;
-	}
-	if (!IsPlayerAlive(client))
-	{
-		PrintHintText(client, "%t", "Can't plant, while dead");
-		return Plugin_Handled;
-	}
-	if (GetClientTeam(client) <= 1)
-	{
-		PrintHintText(client, "%t", "Can't use, while spec");
-		return Plugin_Handled;
-	}
-	if (ZR_IsClientZombie(client))
-	{
-		PrintHintText(client, "%t", "Can't plant, while zombie");
-		return Plugin_Handled;
-	}
-	
-	decl Float:delay_time, dummy_damage, dummy_radius, health, dummy_color[3];
-	delay_time = f_activate_time;
-	dummy_damage = i_explode_damage;
-	dummy_radius = i_explode_radius;
-	health = i_health;
-	dummy_color = i_color;
-	
-	new Action:result = Forward_OnPlantMine(client, delay_time, dummy_damage, dummy_radius, health, dummy_color);
-	
-	switch (result)
-	{
-		case Plugin_Handled, Plugin_Stop :
-		{
-			return result;
-		}
-		case Plugin_Continue :
-		{
-			delay_time = f_activate_time;
-			dummy_damage = i_explode_damage;
-			dummy_radius = i_explode_radius;
-			health = i_health;
-			dummy_color = i_color;
-		}
-	}
-	
-	new mine;
-	if ((mine = PlantMine(client, delay_time, dummy_damage, dummy_radius, health, dummy_color)) == -1)
-		return Plugin_Handled;
-	
-	Forward_OnMinePlanted(client, mine, delay_time, dummy_damage, dummy_radius, health, dummy_color);
-	
-	switch (i_clients_amount[client])
-	{
-		case -1 :
+		case -1:
 		{
 			PrintHintText(client, "%t", "Infinity mines");
 		}
-		default :
+		default:
 		{
-			i_clients_amount[client]--;
-			PrintHintText(client, "%t", "Mines", i_clients_amount[client]);
+			g_iClientsAmount[client]--;
+			PrintHintText(client, "%t", "Mines", g_iClientsAmount[client]);
 		}
 	}
 	
 	return Plugin_Handled;
 }
 
-public Action:OnPlayerRunCmd(client, &buttons, &impulse, Float:vel[3], Float:angles[3], &weapon)
+public Action OnPlayerRunCmd(int client, int& buttons, int& impulse, float vel[3], float angles[3], int& weapon, int& subtype, int& cmdnum, int& tickcount, int& seed, int mouse[2])
 {
-	static iPrevButtons[MAXPLAYERS+1];
+	static int g_iPrevButtons[MAXPLAYERS+1];
 
-	if (!b_allow_pickup || IsFakeClient(client) || !IsPlayerAlive(client) || ZR_IsClientZombie(client))
+	if(!g_bAllowPickup || IsFakeClient(client) || !IsPlayerAlive(client) || ZR_IsClientZombie(client))
 		return Plugin_Continue;
 	
-	if ((buttons & IN_USE) && !(iPrevButtons[client] & IN_USE))
+	if((buttons & IN_USE) && !(g_iPrevButtons[client] & IN_USE))
 	{
 		OnButtonPressed(client);
 	}
 	
-	iPrevButtons[client] = buttons;
+	g_iPrevButtons[client] = buttons;
 	
 	return Plugin_Continue;
 }
 
-OnButtonPressed(client)
+void OnButtonPressed(int client)
 {
-	new Handle:trace = TraceRay(client);
+	Handle g_hTrace = TraceRay(client);
 	
-	new ent = -1;
-	if (TR_DidHit(trace) && (ent = TR_GetEntityIndex(trace)) > MaxClients)
+	int g_iEnt = -1;
+	
+	if(TR_DidHit(g_hTrace) && (g_iEnt = TR_GetEntityIndex(g_hTrace)) > MaxClients)
 	{	
-		CloseHandle(trace);
-		new owner = ZR_GetClientByLasermine(ent);
-		if (owner == -1)
+		CloseHandle(g_hTrace);
+		
+		int g_iOwner = ZR_GetClientByLasermine(g_iEnt);
+		
+		if(g_iOwner == -1)
 		{
 			return;
 		}
-		if (owner == client)
+		if(g_iOwner == client)
 		{
-			PickupLasermine(client, ent, owner);
+			PickupLasermine(client, g_iEnt);
 			return;
-		}
-		else if (b_allow_friendly_pickup)
-		{
-			PickupLasermine(client, ent, owner);
 		}
 	}
+	
 	else
-		CloseHandle(trace);
+	{
+		CloseHandle(g_hTrace);
+	}
 }
 
-PickupLasermine(client, lasermine, owner)
+Handle TraceRay(int client)
 {
-	if (i_clients_amount[client] >= 0 && i_clients_amount[client] == ZR_AddClientLasermines(client))
+	float fStart[3];
+	float fAngle[3];
+	float fEnd[3];
+	
+	GetClientEyePosition(client, fStart);
+	GetClientEyeAngles(client, fAngle);
+	GetAngleVectors(fAngle, fEnd, NULL_VECTOR, NULL_VECTOR);
+	NormalizeVector(fEnd, fEnd);
+
+	fStart[0] = fStart[0] + fEnd[0] * 10.0;
+	fStart[1] = fStart[1] + fEnd[1] * 10.0;
+	fStart[2] = fStart[2] + fEnd[2] * 10.0;
+
+	fEnd[0] = fStart[0] + fEnd[0] * 80.0;
+	fEnd[1] = fStart[1] + fEnd[1] * 80.0;
+	fEnd[2] = fStart[2] + fEnd[2] * 80.0;
+	
+	return TR_TraceRayFilterEx(fStart, fEnd, CONTENTS_SOLID, RayType_EndPoint, FilterPlayers);
+}
+
+public bool FilterPlayers(int entity, int contentsMask)
+{
+	return !(1 <= entity <= MaxClients);
+}
+
+void PickupLasermine(int client, int lasermine)
+{
+	if(g_iClientsAmount[client] >= 0 && g_iClientsAmount[client] == ZR_AddClientLasermines(client))
 	{
 		return;
 	}
 	
-	new Action:result = Forward_OnPrePickup(client, lasermine, owner);
+	AcceptEntityInput(lasermine, "KillHierarchy");
 	
-	switch (result)
+	if (g_iClientsAmount[client] >= 0)
 	{
-		case Plugin_Handled, Plugin_Stop :
-		{
-			return;
-		}
+		PrintHintText(client, "%t", "Mines", g_iClientsAmount[client]);
 	}
 	
-	AcceptEntityInput(lasermine, "KillHierarchy");
-	if (i_clients_amount[client] >= 0)
-		PrintHintText(client, "%t", "Mines", i_clients_amount[client]);
 	else
+	{
 		PrintHintText(client, "%t", "Infinity mines");
-	EmitSoundToClient(client, SND_BUYMINE);
+	}
 	
-	Forward_OnPostPickup(client, lasermine, owner);
+	EmitSoundToClient(client, SND_PICKUPMINE);
 }
 
-Handle:TraceRay(client)
+int PlantMine(int client, float activation_delay = 0.0, int explode_damage, int explode_radius, const color[3] = {255, 255, 255})
 {
-	new Float:startent[3], Float:angle[3], Float:end[3];
-	GetClientEyePosition(client, startent);
-	GetClientEyeAngles(client, angle);
-	GetAngleVectors(angle, end, NULL_VECTOR, NULL_VECTOR);
-	NormalizeVector(end, end);
-
-	startent[0] = startent[0] + end[0] * 10.0;
-	startent[1] = startent[1] + end[1] * 10.0;
-	startent[2] = startent[2] + end[2] * 10.0;
-
-	end[0] = startent[0] + end[0] * 80.0;
-	end[1] = startent[1] + end[1] * 80.0;
-	end[2] = startent[2] + end[2] * 80.0;
-	
-	return TR_TraceRayFilterEx(startent, end, CONTENTS_SOLID, RayType_EndPoint, FilterPlayers);
-}
-
-
-/*
-	------------------------------------------------
-*/
-
-PlantMine(client, Float:activation_delay = 0.0, explode_damage, explode_radius, const health = 0, const color[3] = {255, 255, 255})
-{
-	if (activation_delay > 10.0)
+	if(activation_delay > 10.0)
 	{
 		activation_delay = 10.0;
 	}
-	else if (activation_delay < 0.0)
+	
+	else if(activation_delay < 0.0)
 	{
 		activation_delay = 0.0;
 	}
 	
-	new Handle:trace = TraceRay(client);
+	Handle g_hTrace = TraceRay(client);
 	
-	decl Float:end[3], Float:normal[3], Float:beamend[3];
-	if (TR_DidHit(trace) && TR_GetEntityIndex(trace) < 1)
+	float fEnd[3];
+	float fNormal[3];
+	float fBeamEnd[3];
+	
+	if(TR_DidHit(g_hTrace) && TR_GetEntityIndex(g_hTrace) < 1)
 	{
-		TR_GetEndPosition(end, trace);
-		TR_GetPlaneNormal(trace, normal);
-		CloseHandle(trace);
+		TR_GetEndPosition(fEnd, g_hTrace);
+		TR_GetPlaneNormal(g_hTrace, fNormal);
 		
-		GetVectorAngles(normal, normal);
+		CloseHandle(g_hTrace);
 		
-		TR_TraceRayFilter(end, normal, CONTENTS_SOLID, RayType_Infinite, FilterAll);
-		TR_GetEndPosition(beamend, INVALID_HANDLE);
+		GetVectorAngles(fNormal, fNormal);
 		
-		new ent = CreateEntityByName("prop_physics_override");
-		if (ent == -1 || !IsValidEdict(ent))
+		TR_TraceRayFilter(fEnd, fNormal, CONTENTS_SOLID, RayType_Infinite, FilterAll);
+		TR_GetEndPosition(fBeamEnd, INVALID_HANDLE);
+		
+		int g_iMineEnt = CreateEntityByName("prop_physics_override");
+		if(g_iMineEnt == -1 || !IsValidEdict(g_iMineEnt))
 		{
 			LogError("Could not create entity \"prop_physics_override\"");
 			return -1;
 		}
 		
-		new beament = CreateEntityByName("env_beam");
-		if (beament == -1 || !IsValidEdict(beament))
+		int g_iBeamEnt = CreateEntityByName("env_beam");
+		if(g_iBeamEnt == -1 || !IsValidEdict(g_iBeamEnt))
 		{
 			LogError("Could not create entity \"env_beam\"");
 			return -1;
 		}
 		
-		decl String:start[30], String:tmp[200];
-		Format(start, sizeof(start), "Beam%i", beament);
+		char Start[32], Temp[256], Buffer[16];
 		
-		SetEntityModel(ent, MDL_MINE);
+		Format(Start, sizeof(Start), "Beam%i", g_iBeamEnt);
 		
-		decl String:buffer[16];
-		IntToString(explode_damage, buffer, sizeof(buffer));
-		DispatchKeyValue(ent, "ExplodeDamage", buffer);
-		IntToString(explode_radius, buffer, sizeof(buffer));
-		DispatchKeyValue(ent, "ExplodeRadius", buffer);
+		SetEntityModel(g_iMineEnt, MDL_MINE);
 		
-		DispatchKeyValue(ent, "spawnflags", "3");
-		DispatchSpawn(ent);
+		IntToString(explode_damage, Buffer, sizeof(Buffer));
+		DispatchKeyValue(g_iMineEnt, "ExplodeDamage", Buffer);
+		IntToString(explode_radius, Buffer, sizeof(Buffer));
+		DispatchKeyValue(g_iMineEnt, "ExplodeRadius", Buffer);
 		
-		AcceptEntityInput(ent, "DisableMotion");
-		SetEntityMoveType(ent, MOVETYPE_NONE);
-		TeleportEntity(ent, end, normal, NULL_VECTOR);
+		DispatchKeyValue(g_iMineEnt, "spawnflags", "3");
+		DispatchSpawn(g_iMineEnt);
 		
-		SetEntProp(ent, Prop_Data, "m_nSolidType", 6);
-		SetEntProp(ent, Prop_Data, "m_CollisionGroup", 11);
+		AcceptEntityInput(g_iMineEnt, "DisableMotion");
+		SetEntityMoveType(g_iMineEnt, MOVETYPE_NONE);
+		TeleportEntity(g_iMineEnt, fEnd, fNormal, NULL_VECTOR);
 		
-		if (health)
-		{
-			SetEntProp(ent, Prop_Data, "m_takedamage", 2);
-			SetEntProp(ent, Prop_Data, "m_iHealth", health);
-		}
+		SetEntProp(g_iMineEnt, Prop_Data, "m_nSolidType", 6);
+		SetEntProp(g_iMineEnt, Prop_Data, "m_CollisionGroup", 11);
 		
-		Format(tmp, sizeof(tmp), "%s,Kill,,0,-1", start);
-		DispatchKeyValue(ent, "OnBreak", tmp);
+		Format(Temp, sizeof(Temp), "%s,Kill,,0,-1", Start);
+		DispatchKeyValue(g_iMineEnt, "OnBreak", Temp);
 		
-		EmitSoundToAll(SND_MINEPUT, ent);
+		EmitSoundToAll(SND_PUTMINE, g_iMineEnt);
+
+		DispatchKeyValue(g_iBeamEnt, "targetname", Start);
+		DispatchKeyValue(g_iBeamEnt, "damage", "0");
+		DispatchKeyValue(g_iBeamEnt, "framestart", "0");
+		DispatchKeyValue(g_iBeamEnt, "BoltWidth", "4.0");
+		DispatchKeyValue(g_iBeamEnt, "renderfx", "0");
+		DispatchKeyValue(g_iBeamEnt, "TouchType", "3"); // 0 = none, 1 = player only, 2 = NPC only, 3 = player or NPC, 4 = player, NPC or physprop
+		DispatchKeyValue(g_iBeamEnt, "framerate", "0");
+		DispatchKeyValue(g_iBeamEnt, "decalname", "Bigshot");
+		DispatchKeyValue(g_iBeamEnt, "TextureScroll", "35");
+		DispatchKeyValue(g_iBeamEnt, "HDRColorScale", "1.0");
+		DispatchKeyValue(g_iBeamEnt, "texture", MDL_LASER);
+		DispatchKeyValue(g_iBeamEnt, "life", "0"); // 0 = infinite, beam life time in seconds
+		DispatchKeyValue(g_iBeamEnt, "StrikeTime", "1"); // If beam life time not infinite, this repeat it back
+		DispatchKeyValue(g_iBeamEnt, "LightningStart", Start);
+		DispatchKeyValue(g_iBeamEnt, "spawnflags", "0"); // 0 disable, 1 = start on, etc etc. look from hammer editor
+		DispatchKeyValue(g_iBeamEnt, "NoiseAmplitude", "0"); // straight beam = 0, other make noise beam
+		DispatchKeyValue(g_iBeamEnt, "Radius", "256");
+		DispatchKeyValue(g_iBeamEnt, "renderamt", "100");
+		DispatchKeyValue(g_iBeamEnt, "rendercolor", "0 0 0");
 		
+		AcceptEntityInput(g_iBeamEnt, "TurnOff");
 		
+		SetEntityModel(g_iBeamEnt, MDL_LASER);
 		
-		// Set keyvalues on the beam.
-		DispatchKeyValue(beament, "targetname", start);
-		DispatchKeyValue(beament, "damage", "0");
-		DispatchKeyValue(beament, "framestart", "0");
-		DispatchKeyValue(beament, "BoltWidth", "4.0");
-		DispatchKeyValue(beament, "renderfx", "0");
-		DispatchKeyValue(beament, "TouchType", "3"); // 0 = none, 1 = player only, 2 = NPC only, 3 = player or NPC, 4 = player, NPC or physprop
-		DispatchKeyValue(beament, "framerate", "0");
-		DispatchKeyValue(beament, "decalname", "Bigshot");
-		DispatchKeyValue(beament, "TextureScroll", "35");
-		DispatchKeyValue(beament, "HDRColorScale", "1.0");
-		DispatchKeyValue(beament, "texture", MDL_LASER);
-		DispatchKeyValue(beament, "life", "0"); // 0 = infinite, beam life time in seconds
-		DispatchKeyValue(beament, "StrikeTime", "1"); // If beam life time not infinite, this repeat it back
-		DispatchKeyValue(beament, "LightningStart", start);
-		DispatchKeyValue(beament, "spawnflags", "0"); // 0 disable, 1 = start on, etc etc. look from hammer editor
-		DispatchKeyValue(beament, "NoiseAmplitude", "0"); // straight beam = 0, other make noise beam
-		DispatchKeyValue(beament, "Radius", "256");
-		DispatchKeyValue(beament, "renderamt", "100");
-		DispatchKeyValue(beament, "rendercolor", "0 0 0");
+		TeleportEntity(g_iBeamEnt, fBeamEnd, NULL_VECTOR, NULL_VECTOR); // Teleport the beam
 		
-		AcceptEntityInput(beament, "TurnOff");
+		SetEntPropVector(g_iBeamEnt, Prop_Data, "m_vecEndPos", fEnd);
+		SetEntPropFloat(g_iBeamEnt, Prop_Data, "m_fWidth", 3.0);
+		SetEntPropFloat(g_iBeamEnt, Prop_Data, "m_fEndWidth", 3.0);
 		
-		SetEntityModel(beament, MDL_LASER);
+		SetEntPropEnt(g_iBeamEnt, Prop_Data, "m_hOwnerEntity", client); // Sets the owner of the beam
+		SetEntPropEnt(g_iMineEnt, Prop_Data, "m_hMoveChild", g_iBeamEnt);
+		SetEntPropEnt(g_iBeamEnt, Prop_Data, "m_hEffectEntity", g_iMineEnt);
 		
-		TeleportEntity(beament, beamend, NULL_VECTOR, NULL_VECTOR); // Teleport the beam
+		Handle g_hDatapack = CreateDataPack();
+		WritePackCell(g_hDatapack, g_iBeamEnt);
+		WritePackCell(g_hDatapack, g_iMineEnt);
+		WritePackCell(g_hDatapack, color[0]);
+		WritePackCell(g_hDatapack, color[1]);
+		WritePackCell(g_hDatapack, color[2]);
+		WritePackString(g_hDatapack, Start);
+		CreateTimer(activation_delay, OnActivateLaser, g_hDatapack, TIMER_FLAG_NO_MAPCHANGE|TIMER_HNDL_CLOSE);
 		
-		SetEntPropVector(beament, Prop_Data, "m_vecEndPos", end);
-		SetEntPropFloat(beament, Prop_Data, "m_fWidth", 3.0);
-		SetEntPropFloat(beament, Prop_Data, "m_fEndWidth", 3.0);
+		SetEntPropEnt(g_iMineEnt, Prop_Send, "m_PredictableID", client);
 		
-		SetEntPropEnt(beament, Prop_Data, "m_hOwnerEntity", client); // Sets the owner of the beam
-		SetEntPropEnt(ent, Prop_Data, "m_hMoveChild", beament);
-		SetEntPropEnt(beament, Prop_Data, "m_hEffectEntity", ent);
+		SDKHook(g_iMineEnt, SDKHook_OnTakeDamage, OnTakeDamage);
 		
-		new Handle:datapack = CreateDataPack();
-		WritePackCell(datapack, beament);
-		WritePackCell(datapack, ent);
-		WritePackCell(datapack, color[0]);
-		WritePackCell(datapack, color[1]);
-		WritePackCell(datapack, color[2]);
-		WritePackString(datapack, start);
-		CreateTimer(activation_delay, OnActivateLaser, datapack, TIMER_FLAG_NO_MAPCHANGE|TIMER_HNDL_CLOSE);
-		
-		SetEntPropEnt(ent, Prop_Send, "m_PredictableID", client);
-		
-		SDKHook(ent, SDKHook_OnTakeDamage, OnTakeDamage);
-		
-		return ent;
+		return g_iMineEnt;
 	}
+	
 	else
-		CloseHandle(trace);
+	{
+		CloseHandle(g_hTrace);
+	}
+	
 	return -1;
 }
 
-public Action:OnTakeDamage(victim, &attacker, &inflictor, &Float:damage, &damagetype)
+public bool FilterAll(int entity, int contentsMask)
 {
-	if (ZR_IsEntityLasermine(victim))
+	return false;
+}
+
+public Action OnTakeDamage(int victim, int& attacker, int& inflictor, float& damage, int& damagetype)
+{
+	if(ZR_IsEntityLasermine(victim))
 	{
-		if (1 <= attacker <= MaxClients)
+		if(1 <= attacker <= MaxClients)
 		{
-			new client = ZR_GetClientByLasermine(victim);
-			if ((client != -1) && (client != attacker) && ZR_IsClientHuman(attacker))
+			int client = ZR_GetClientByLasermine(victim);
+			
+			if((client != -1) && (client != attacker) && ZR_IsClientHuman(attacker))
 			{
 				return Plugin_Handled;
 			}
+			
 			return Plugin_Continue;
 		}
+		
 		else if (!ZR_IsEntityLasermine(inflictor))
 		{
 			return Plugin_Handled;
@@ -876,190 +546,186 @@ public Action:OnTakeDamage(victim, &attacker, &inflictor, &Float:damage, &damage
 	return Plugin_Continue;
 }
 
-/*
-	------------------------------------------------
-*/
-
-public bool:FilterAll(entity, contentsMask)
-{
-	return false;
-}
-
-public bool:FilterPlayers(entity, contentsMask)
-{
-	return !(1 <= entity <= MaxClients);
-}
-
-public Action:OnActivateLaser(Handle:timer, any:hDataPack)
+public Action OnActivateLaser(Handle Timer, any hDataPack)
 {
 	ResetPack(hDataPack);
-	decl String:start[30], String:tmp[200], color[3];
-	new beament = ReadPackCell(hDataPack);
-	new ent = ReadPackCell(hDataPack);
-	color[0] = ReadPackCell(hDataPack);
-	color[1] = ReadPackCell(hDataPack);
-	color[2] = ReadPackCell(hDataPack);
-	ReadPackString(hDataPack, start, sizeof(start));
 	
-	if (!IsValidEdict(beament) || !IsValidEdict(ent))
+	char Start[32], Temp[256];
+	int g_iColor[3];
+	
+	int g_iBeamEnt = ReadPackCell(hDataPack);
+	int g_iEnt = ReadPackCell(hDataPack);
+	g_iColor[0] = ReadPackCell(hDataPack);
+	g_iColor[1] = ReadPackCell(hDataPack);
+	g_iColor[2] = ReadPackCell(hDataPack);
+	ReadPackString(hDataPack, Start, sizeof(Start));
+	
+	if (!IsValidEdict(g_iBeamEnt) || !IsValidEdict(g_iEnt))
 	{
 		return Plugin_Stop;
 	}
 	
-	AcceptEntityInput(beament, "TurnOn");
+	AcceptEntityInput(g_iBeamEnt, "TurnOn");
 	
-	SetEntityRenderColor(beament, color[0], color[1], color[2]);
+	SetEntityRenderColor(g_iBeamEnt, g_iColor[0], g_iColor[1], g_iColor[2]);
 
-	Format(tmp, sizeof(tmp), "%s,TurnOff,,0.001,-1", start);
-	DispatchKeyValue(beament, "OnTouchedByEntity", tmp);
-	Format(tmp, sizeof(tmp), "%s,TurnOn,,0.002,-1", start);
-	DispatchKeyValue(beament, "OnTouchedByEntity", tmp);
+	Format(Temp, sizeof(Temp), "%s,TurnOff,,0.001,-1", Start);
+	DispatchKeyValue(g_iBeamEnt, "OnTouchedByEntity", Temp);
+	Format(Temp, sizeof(Temp), "%s,TurnOn,,0.002,-1", Start);
+	DispatchKeyValue(g_iBeamEnt, "OnTouchedByEntity", Temp);
 
-	EmitSoundToAll(SND_MINEACT, ent);
+	EmitSoundToAll(SND_MINEACTIVATED, g_iEnt);
 	
 	return Plugin_Stop;
 }
 
-/*
-			N A T I V E S
-	------------------------------------------------
-*/
-
-public Native_AddMines(Handle:plugin, numParams)
+public any Native_AddMines(Handle plugin, int numParams)
 {
-	new client = GetNativeCell(1);
+	int client = GetNativeCell(1);
+	
 	if (client < 1 || client > MaxClients)
 	{
 		ThrowNativeError(SP_ERROR_INDEX, "Client index %i is invalid", client);
 		return 0;
 	}
-	else if (!IsClientInGame(client))
+	
+	else if(!IsClientInGame(client))
 	{
 		ThrowNativeError(SP_ERROR_NOT_FOUND, "Client %i is not in game", client);
 		return 0;
 	}
 	
-	new amount = GetNativeCell(2);
-	new bool:limit = bool:GetNativeCell(3);
+	int g_iNativeAmount = GetNativeCell(2);
+	bool g_bLimit = GetNativeCell(3);
 	
-	if (amount <= 0)
+	if(g_iNativeAmount <= 0)
 	{
-		return i_clients_amount[client];
+		return g_iClientsAmount[client];
 	}
-	if (i_clients_amount[client] < 0)
+	
+	if(g_iClientsAmount[client] < 0)
 	{
 		return -1;
 	}
 	
-	i_clients_amount[client] += amount;
+	g_iClientsAmount[client] += g_iNativeAmount;
 	
-	if (limit)
+	if(g_bLimit)
 	{
-		if (i_clients_amount[client] > i_clients_maxlimit[client])
+		if(g_iClientsAmount[client] > g_iClientsMaxLimit[client])
 		{
-			i_clients_amount[client] = i_clients_maxlimit[client];
+			g_iClientsAmount[client] = g_iClientsMaxLimit[client];
 		}
 	}
 	
-	return i_clients_amount[client];
+	return g_iClientsAmount[client];
 }
 
-public Native_SetMines(Handle:plugin, numParams)
+public any Native_SetMines(Handle plugin, int numParams)
 {
-	new client = GetNativeCell(1);
-	if (client < 1 || client > MaxClients)
+	int client = GetNativeCell(1);
+	
+	if(client < 1 || client > MaxClients)
 	{
 		ThrowNativeError(SP_ERROR_INDEX, "Client index %i is invalid", client);
 		return false;
 	}
-	else if (!IsClientInGame(client))
+	
+	else if(!IsClientInGame(client))
 	{
 		ThrowNativeError(SP_ERROR_NOT_FOUND, "Client %i is not in game", client);
 		return false;
 	}
 	
-	new amount = GetNativeCell(2);
-	new bool:limit = bool:GetNativeCell(3);
+	int g_iNativeAmount = GetNativeCell(2);
+	bool g_bLimit = GetNativeCell(3);
 	
-	if (amount < -1)
+	if (g_iNativeAmount < -1)
 	{
-		amount = -1;
+		g_iNativeAmount = -1;
 	}
 	
-	i_clients_amount[client] = amount;
+	g_iClientsAmount[client] = g_iNativeAmount;
 	
-	if (limit)
+	if(g_bLimit)
 	{
-		if (i_clients_amount[client] > i_clients_maxlimit[client])
+		if(g_iClientsAmount[client] > g_iClientsMaxLimit[client])
 		{
-			i_clients_amount[client] = i_clients_maxlimit[client];
+			g_iClientsAmount[client] = g_iClientsMaxLimit[client];
 		}
 	}
 	
 	return true;
 }
 
-public Native_SubstractMines(Handle:plugin, numParams)
+public any Native_SubstractMines(Handle plugin, int numParams)
 {
-	new client = GetNativeCell(1);
-	if (client < 1 || client > MaxClients)
+	int client = GetNativeCell(1);
+	
+	if(client < 1 || client > MaxClients)
 	{
 		ThrowNativeError(SP_ERROR_INDEX, "Client index %i is invalid", client);
 		return 0;
 	}
-	else if (!IsClientInGame(client))
+	
+	else if(!IsClientInGame(client))
 	{
 		ThrowNativeError(SP_ERROR_NOT_FOUND, "Client %i is not in game", client);
 		return 0;
 	}
 	
-	new amount = GetNativeCell(2);
+	int g_iNativeAmount = GetNativeCell(2);
 	
-	if (i_clients_amount[client] == -1)
+	if(g_iClientsAmount[client] == -1)
 	{
-		return i_clients_amount[client];
+		return g_iClientsAmount[client];
 	}
 	
-	if (amount <= 0)
+	if(g_iNativeAmount <= 0)
 	{
-		return i_clients_amount[client];
+		return g_iClientsAmount[client];
 	}
 	
-	i_clients_amount[client] -= amount;
-	if (i_clients_amount[client] < 0)
+	g_iClientsAmount[client] -= g_iNativeAmount;
+	
+	if(g_iClientsAmount[client] < 0)
 	{
-		i_clients_amount[client] = 0;
+		g_iClientsAmount[client] = 0;
 	}
 	
-	return i_clients_amount[client];
+	return g_iClientsAmount[client];
 }
 
-public Native_GetMines(Handle:plugin, numParams)
+public any Native_GetMines(Handle plugin, int numParams)
 {
-	new client = GetNativeCell(1);
-	if (client < 1 || client > MaxClients)
+	int client = GetNativeCell(1);
+	
+	if(client < 1 || client > MaxClients)
 	{
 		ThrowNativeError(SP_ERROR_INDEX, "Client index %i is invalid", client);
 		return 0;
 	}
-	else if (!IsClientInGame(client))
+	
+	else if(!IsClientInGame(client))
 	{
 		ThrowNativeError(SP_ERROR_NOT_FOUND, "Client %i is not in game", client);
 		return 0;
 	}
 	
-	return i_clients_amount[client];
+	return g_iClientsAmount[client];
 }
 
-public Native_ClearMapMines(Handle:plugin, numParams)
+public any Native_ClearMapMines(Handle plugin, int numParams)
 {
-	new client = GetNativeCell(1);
-	if (client < 1 || client > MaxClients)
+	int client = GetNativeCell(1);
+	
+	if(client < 1 || client > MaxClients)
 	{
 		ThrowNativeError(SP_ERROR_INDEX, "Client index %i is invalid", client);
 		return;
 	}
-	else if (!IsClientInGame(client))
+	
+	else if(!IsClientInGame(client))
 	{
 		ThrowNativeError(SP_ERROR_NOT_FOUND, "Client %i is not in game", client);
 		return;
@@ -1068,268 +734,104 @@ public Native_ClearMapMines(Handle:plugin, numParams)
 	OnClientDisconnect(client);
 }
 
-public Native_PlantMine(Handle:plugin, numParams)
+public any Native_IsLasermine(Handle plugin, int numParams)
 {
-	new client = GetNativeCell(1);
+	int g_iEnt = GetNativeCell(1);
 	
-	if (client < 1 || client > MaxClients)
+	if(g_iEnt <= MaxClients || !IsValidEdict(g_iEnt))
 	{
-		ThrowNativeError(SP_ERROR_INDEX, "Client index %i is invalid", client);
-		return false;
-	}
-	else if (!IsClientInGame(client))
-	{
-		ThrowNativeError(SP_ERROR_NOT_FOUND, "Client %i is not in game", client);
 		return false;
 	}
 	
-	new Float:f_delay = GetNativeCell(2);
-	new i_exp_damage = GetNativeCell(3);
-	new i_exp_radius = GetNativeCell(4);
-	new health = GetNativeCell(5);
-	decl color[3]; GetNativeArray(6, color, sizeof(color));
+	char ModelName[PLATFORM_MAX_PATH];
+	GetEntPropString(g_iEnt, Prop_Data, "m_ModelName", ModelName, sizeof(ModelName));
 	
-	new mine;
-	if ((mine = PlantMine(client, f_delay, i_exp_damage, i_exp_radius, health, color)) != -1)
-	{
-		Forward_OnMinePlanted(client, mine, f_delay, i_exp_damage, i_exp_radius, health, color);
-	}
-	return (mine != -1);
+	return(StrEqual(ModelName, MDL_MINE, false) && GetEntPropEnt(g_iEnt, Prop_Data, "m_hMoveChild") != -1);
 }
 
-public Native_IsLasermine(Handle:plugin, numParams)
+public any Native_GetClientByLasermine(Handle plugin, int numParams)
 {
-	new entity = GetNativeCell(1);
-	if (entity <= MaxClients || !IsValidEdict(entity))
-	{
-		return false;
-	}
-	decl String:g_szModel[PLATFORM_MAX_PATH];
-	GetEntPropString(entity, Prop_Data, "m_ModelName", g_szModel, sizeof(g_szModel));
-	return (StrEqual(g_szModel, MDL_MINE, false) && GetEntPropEnt(entity, Prop_Data, "m_hMoveChild") != -1);
-}
-
-public Native_GetClientByLasermine(Handle:plugin, numParams)
-{
-	new entity = GetNativeCell(1);
-	new beam;
-	if ((beam = ZR_GetBeamByLasermine(entity)) == -1)
+	int g_iEnt = GetNativeCell(1);
+	int g_iBeamEnt;
+	
+	if ((g_iBeamEnt = ZR_GetBeamByLasermine(g_iEnt)) == -1)
 	{
 		return -1;
 	}
-	return GetEntPropEnt(beam, Prop_Data, "m_hOwnerEntity");
+	
+	return GetEntPropEnt(g_iBeamEnt, Prop_Data, "m_hOwnerEntity");
 }
 
-public Native_SetClientMaxLasermines(Handle:plugin, numParams)
+public any Native_SetClientMaxLasermines(Handle plugin, int numParams)
 {
-	new client = GetNativeCell(1);
-	if (client < 1 || client > MaxClients)
+	int client = GetNativeCell(1);
+	
+	if(client < 1 || client > MaxClients)
 	{
 		ThrowNativeError(SP_ERROR_INDEX, "Client index %i is invalid", client);
 	}
-	else if (!IsClientAuthorized(client))
+	
+	else if(!IsClientAuthorized(client))
 	{
 		ThrowNativeError(SP_ERROR_NOT_FOUND, "Client %i is not authorized", client);
 	}
-	new amount = GetNativeCell(2);
-	if (amount < -1)
+	
+	int g_iNativeAmount = GetNativeCell(2);
+	
+	if (g_iNativeAmount < -1)
 	{
-		amount = -1;
+		g_iNativeAmount = -1;
 	}
-	i_clients_maxlimit[client] = amount;
-	i_clients_myamount[client] = amount;
-	b_used_by_native[client] = true;
+	
+	g_iClientsMaxLimit[client] = g_iNativeAmount;
+	g_iClientsMyAmount[client] = g_iNativeAmount;
+	g_iUsedByNative[client] = true;
 }
 
-public Native_ResetClientMaxLasermines(Handle:plugin, numParams)
+public any Native_ResetClientMaxLasermines(Handle plugin, int numParams)
 {
-	new client = GetNativeCell(1);
-	if (client < 1 || client > MaxClients)
+	int client = GetNativeCell(1);
+	
+	if(client < 1 || client > MaxClients)
 	{
 		ThrowNativeError(SP_ERROR_INDEX, "Client index %i is invalid", client);
 	}
-	else if (!IsClientConnected(client))
+	
+	else if(!IsClientConnected(client))
 	{
 		ThrowNativeError(SP_ERROR_NOT_FOUND, "Client %i is not connected", client);
 	}
+	
 	OnClientConnected(client);
 }
 
-public Native_GetBeamByLasermine(Handle:plugin, numParams)
+public any Native_GetBeamByLasermine(Handle plugin, int numParams)
 {
-	new entity = GetNativeCell(1);
-	if (ZR_IsEntityLasermine(entity))
+	int g_iEnt = GetNativeCell(1);
+	
+	if(ZR_IsEntityLasermine(g_iEnt))
 	{
-		return GetEntPropEnt(entity, Prop_Data, "m_hMoveChild");
+		return GetEntPropEnt(g_iEnt, Prop_Data, "m_hMoveChild");
 	}
+	
 	return -1;
 }
 
-public Native_GetLasermineByBeam(Handle:plugin, numParams)
+public any Native_GetLasermineByBeam(Handle plugin, int numParams)
 {
-	new mine = GetEntPropEnt(GetNativeCell(1), Prop_Data, "m_hEffectEntity");
-	if (mine != -1 && ZR_IsEntityLasermine(mine))
+	int g_iMine = GetEntPropEnt(GetNativeCell(1), Prop_Data, "m_hEffectEntity");
+	
+	if (g_iMine != -1 && ZR_IsEntityLasermine(g_iMine))
 	{
-		return mine;
+		return g_iMine;
 	}
+	
 	return -1;
 }
 
-/*
-		F O R W A R D S
-	------------------------------------------------
-*/
-
-Action:Forward_OnPlantMine(client, &Float:activate_time, &exp_damage, &exp_radius, &health, color[3])
+bool IsValidClient(int client)
 {
-	decl Action:result;
-	result = Plugin_Continue;
-	
-	Call_StartForward(h_fwdOnPlantLasermine);
-	Call_PushCell(client);
-	Call_PushFloatRef(activate_time);
-	Call_PushCellRef(exp_damage);
-	Call_PushCellRef(exp_radius);
-	Call_PushCellRef(health);
-	Call_PushArrayEx(color, sizeof(color), SM_PARAM_COPYBACK);
-	Call_Finish(result);
-	
-	return result;
-}
-
-Forward_OnMinePlanted(client, mine, Float:activate_time, exp_damage, exp_radius, health, color[3])
-{
-	Call_StartForward(h_fwdOnLaserminePlanted);
-	Call_PushCell(client);
-	Call_PushCell(mine);
-	Call_PushFloat(activate_time);
-	Call_PushCell(exp_damage);
-	Call_PushCell(exp_radius);
-	Call_PushCell(health);
-	Call_PushArray(color, sizeof(color));
-	Call_Finish();
-}
-
-Action:Forward_OnPreHit(victim, &attacker, &beam, &lasermine, &damage)
-{
-	decl Action:result;
-	result = Plugin_Continue;
-	
-	Call_StartForward(h_fwdOnPreHitByLasermine);
-	Call_PushCell(victim);
-	Call_PushCellRef(attacker);
-	Call_PushCellRef(beam);
-	Call_PushCellRef(lasermine);
-	Call_PushCellRef(damage);
-	Call_Finish(result);
-	
-	return result;
-}
-
-Forward_OnPostHit(victim, attacker, beam, lasermine, damage)
-{
-	Call_StartForward(h_fwdOnPostHitByLasermine);
-	Call_PushCell(victim);
-	Call_PushCell(attacker);
-	Call_PushCell(beam);
-	Call_PushCell(lasermine);
-	Call_PushCell(damage);
-	Call_Finish();
-}
-
-Action:Forward_OnPreBuy(client, &amount, &price)
-{
-	decl Action:result;
-	result = Plugin_Continue;
-	
-	Call_StartForward(h_fwdOnPreBuyLasermine);
-	Call_PushCell(client);
-	Call_PushCellRef(amount);
-	Call_PushCellRef(price);
-	Call_Finish(result);
-	
-	return result;
-}
-
-Forward_OnPostBuy(client, amount, sum)
-{
-	Call_StartForward(h_fwdOnPostBuyLasermine);
-	Call_PushCell(client);
-	Call_PushCell(amount);
-	Call_PushCell(sum);
-	Call_Finish();
-}
-
-Action:Forward_OnPrePickup(client, lasermine, owner)
-{
-	decl Action:result;
-	result = Plugin_Continue;
-	
-	Call_StartForward(h_fwdOnPrePickupLasermine);
-	Call_PushCell(client);
-	Call_PushCell(lasermine);
-	Call_PushCell(owner);
-	Call_Finish(result);
-	
-	return result;
-}
-
-Forward_OnPostPickup(client, lasermine, owner)
-{
-	Call_StartForward(h_fwdOnPostPickupLasermine);
-	Call_PushCell(client);
-	Call_PushCell(lasermine);
-	Call_PushCell(owner);
-	Call_Finish();
-}
-
-/*
-			S T O C K S
-	------------------------------------------------
-*/
-
-
-stock bool:StringToColor(const String:str[], color[3], const defvalue = -1)
-{
-	new bool:result = false;
-	decl String:Splitter[3][64];
-	if (ExplodeString(str, " ", Splitter, sizeof(Splitter), sizeof(Splitter[])) == 3 && String_IsNumeric(Splitter[0]) && String_IsNumeric(Splitter[1]) && String_IsNumeric(Splitter[2]))
-	{
-		color[0] = StringToInt(Splitter[0]);
-		color[1] = StringToInt(Splitter[1]);
-		color[2] = StringToInt(Splitter[2]);
-		result = true;
-	}
-	else
-	{
-		color[0] = defvalue;
-		color[1] = defvalue;
-		color[2] = defvalue;
-	}
-	return result;
-}
-
-stock bool:String_IsNumeric(const String:str[])
-{	
-	new x=0;
-	new numbersFound=0;
-
-	if (str[x] == '+' || str[x] == '-')
-		x++;
-
-	while (str[x] != '\0')
-	{
-		if (IsCharNumeric(str[x]))
-			numbersFound++;
-		else
-			return false;
-		x++;
-	}
-	
-	if (!numbersFound)
-		return false;
-	
-	return true;
+	return(IsClientInGame(client) && IsPlayerAlive(client) && GetClientTeam(client) == CS_TEAM_CT);
 }
 
 bool AccessToLasermines(int client)
