@@ -11,7 +11,7 @@
  * @param uselimit  Set to true to use the plugin limitation, false to ignore
  * @return			New amount of laser mines. 0 if no lasermines added and -1 if the player has unlimited lasermines
  */
-native ZR_AddClientLasermines(client, amount = 1, bool:uselimit = true);
+native int ZR_AddClientLasermines(int client, int amount = 1, bool uselimit = true);
 
 /**
  * Sets the player's amount of the remaining laser mines
@@ -21,7 +21,7 @@ native ZR_AddClientLasermines(client, amount = 1, bool:uselimit = true);
  * @param uselimit  Set to true to use the plugin limitation, false to ignore
  * @return			true on success, false otherwise
  */
-native bool:ZR_SetClientLasermines(client, amount, bool:uselimit = true);
+native bool ZR_SetClientLasermines(int client, int amount, bool uselimit = true);
 
 /**
  * Subtracts one or more remaining lasermines from the player
@@ -30,7 +30,7 @@ native bool:ZR_SetClientLasermines(client, amount, bool:uselimit = true);
  * @param amount    Amount of laser mines to substract.
  * @return			new amount of laser mines
  */
-native ZR_SubClientLasermines(client, amount = 1);
+native int ZR_SubClientLasermines(int client, int amount = 1);
 
 /**
  * Returns number of remaining laser mines a player has.
@@ -38,7 +38,7 @@ native ZR_SubClientLasermines(client, amount = 1);
  * @param client 	Client index to get from
  * @return			number of remaining laser mines.
  */
-native ZR_GetClientLasermines(client);
+native int ZR_GetClientLasermines(int client);
 
 /**
  * Foces a player to plant laser mine without substracting his amount. Does not call ZR_OnPlantLasermine
@@ -51,7 +51,7 @@ native ZR_GetClientLasermines(client);
  * @param color 			The laser mine's color.
  * @return			true on success, false otherwise
  */
-native bool:ZR_PlantClientLasermine(client, Float:activation_delay = 2.0, explosion_damage = 100, explosion_radius = 300, health = 0, color[3] = {255, 255, 255});
+native bool ZR_PlantClientLasermine(int client, float activation_delay = 2.0, int explosion_damage = 100, int explosion_radius = 300, int health = 0, int color[3] = {255, 255, 255});
 
 /**
  * Clears the map from the player's laser mines
@@ -59,7 +59,7 @@ native bool:ZR_PlantClientLasermine(client, Float:activation_delay = 2.0, explos
  * @param client 	Client index to clear
  * @noreturn
  */
-native ZR_ClearMapClientLasermines(client);
+native int ZR_ClearMapClientLasermines(int client);
 
 /**
  * Checks whether the entity is a lasermine
@@ -67,7 +67,7 @@ native ZR_ClearMapClientLasermines(client);
  * @param entity 	Entity index to check
  * @return			True if the entity is a lasermine, false otherwise
  */
-native bool:ZR_IsEntityLasermine(entity);
+native bool ZR_IsEntityLasermine(int entity);
 
 /**
  * Gets client index by the lasermine
@@ -75,7 +75,7 @@ native bool:ZR_IsEntityLasermine(entity);
  * @param client 	Entity index to get the owner for
  * @return			Client index or -1 if no client found
  */
-native ZR_GetClientByLasermine(entity);
+native int ZR_GetClientByLasermine(int entity);
 
 /**
  * Sets client max amount of lasermines
@@ -84,7 +84,7 @@ native ZR_GetClientByLasermine(entity);
  * @param amount 	The max amount to set
  * @noreturn
  */
-native ZR_SetClientMaxLasermines(client, amount);
+native int ZR_SetClientMaxLasermines(int client, int amount);
 
 /**
  * Gets beam index by the lasermine
@@ -92,7 +92,7 @@ native ZR_SetClientMaxLasermines(client, amount);
  * @param client 	The lasermine index to get the beam for
  * @return			Beam index or -1 if no beam found
  */
-native ZR_GetBeamByLasermine(entity);
+native int ZR_GetBeamByLasermine(int entity);
 
 /**
  * Gets lasermine index by the beam
@@ -100,7 +100,7 @@ native ZR_GetBeamByLasermine(entity);
  * @param client 	The beam index to get the lasermine for
  * @return			Lasermine index or -1 if no lasermine found
  */
-native ZR_GetLasermineByBeam(entity);
+native int ZR_GetLasermineByBeam(int entity);
 
 /**
  * Called when the player is about to buy a laser mine
@@ -110,7 +110,7 @@ native ZR_GetLasermineByBeam(entity);
  * @param price 	The laser mine price. Set by reference
  * @return 		Plugin_Changed to apply new values, Plugin_Contninue to allow buy as is and >= Plugin_Handled to block the operation
  */
-forward Action:ZR_OnPreBuyLasermine(client, &amount, &price);
+forward Action ZR_OnPreBuyLasermine(int client, int &amount, int &price);
 
 
 /**
@@ -121,7 +121,7 @@ forward Action:ZR_OnPreBuyLasermine(client, &amount, &price);
  * @param amount 	The sum of money the player cost
  * @noreturn
  */
-forward ZR_OnPostBuyLasermine(client, amount, sum);
+forward void ZR_OnPostBuyLasermine(int client, int amount, int sum);
 
 /**
  * Called when the player is about to plant a laser mine
@@ -134,7 +134,7 @@ forward ZR_OnPostBuyLasermine(client, amount, sum);
  * @param color[3]			The laser mine's color. Set by reference
  * @return 		Plugin_Changed to apply new values, Plugin_Contninue to allow the planting as is and >= Plugin_Handled to block the planting
  */
-forward Action:ZR_OnPlantLasermine(client, &Float:act_delay, &exp_damage, &exp_radius, &health, color[3]);
+forward Action ZR_OnPlantLasermine(int client, float &act_delay, int &exp_damage, int  &exp_radius, int &health, int color[3]);
 
 /**
  * Called when the player planted a laser mine
@@ -147,7 +147,7 @@ forward Action:ZR_OnPlantLasermine(client, &Float:act_delay, &exp_damage, &exp_r
  * @param color[3]			The laser mine's color
  * @noreturn
  */
-forward ZR_OnLaserminePlanted(client, lasermine, Float:act_delay, exp_damage, exp_radius, health, color[3]);
+forward void ZR_OnLaserminePlanted(int client, int lasermine, float act_delay, int exp_damage, int exp_radius, int health, int color[3]);
 
 /**
  * Called when the player is about to be hitted by a laser mine
@@ -159,7 +159,7 @@ forward ZR_OnLaserminePlanted(client, lasermine, Float:act_delay, exp_damage, ex
  * @param damage 		Damage of the hit. Set by reference
  * @return 		Plugin_Changed to apply new values, Plugin_Contninue to allow the hit as is and >= Plugin_Handled to block the hit
  */
-forward Action:ZR_OnPreHitByLasermine(victim, &attacker, &beam, &lasermine, &damage);
+forward Action ZR_OnPreHitByLasermine(int victim, int &attacker, int &beam, int &lasermine, int &damage);
 
 
 /**
@@ -172,7 +172,7 @@ forward Action:ZR_OnPreHitByLasermine(victim, &attacker, &beam, &lasermine, &dam
  * @param damage 		Damage of the hit
  * @noreturn
  */
-forward ZR_OnPostHitByLasermine(victim, attacker, beam, lasermine, damage);
+forward void ZR_OnPostHitByLasermine(int victim, int attacker, int beam, int lasermine, int damage);
 
 /**
  * Called when the player is about to pickup a lasermine
@@ -182,7 +182,7 @@ forward ZR_OnPostHitByLasermine(victim, attacker, beam, lasermine, damage);
  * @param owner 		The lasermine's owner index.
  * @return 		 Plugin_Contninue or Plugin_Changed to allow the pickup and Plugin_Handled or Plugin_Stop to block the pickup
  */
-forward Action:ZR_OnPrePickupLasermine(client, lasermine, owner);
+forward Action ZR_OnPrePickupLasermine(int client, int lasermine, int owner);
 
 
 /**
@@ -193,14 +193,14 @@ forward Action:ZR_OnPrePickupLasermine(client, lasermine, owner);
  * @param owner 		The lasermine's owner index
  * @noeturn
  */
-forward ZR_OnPostPickupLasermine(client, lasermine, owner);
+forward void ZR_OnPostPickupLasermine(int client, int lasermine, int owner);
 
 
 /* --------------------------------------------
 	Don't edit below this line
 -------------------------------------------- */
 
-public SharedPlugin:__pl_zrlasermines = 
+public SharedPlugin __pl_zrlasermines = 
 {
 	name = "zr_lasermines",
 	file = "zr_lasermines.smx",
@@ -212,7 +212,7 @@ public SharedPlugin:__pl_zrlasermines =
 };
 
 #if !defined REQUIRE_PLUGIN
-public __pl_zrlasermines_SetNTVOptional()
+public void __pl_zrlasermines_SetNTVOptional()
 {
 	MarkNativeAsOptional("ZR_AddClientLasermines");
 	MarkNativeAsOptional("ZR_SetClientLasermines");
