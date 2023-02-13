@@ -196,12 +196,10 @@ public void OnTouchedByEntity(const char[] output, int caller, int activator, fl
 	int g_iDummyDamage;
 	int g_iDummyCaller;
 	int g_iDummyOwner;
-	int g_iDummyLasermine;
 
 	g_iDummyDamage = g_iDamage;
 	g_iDummyCaller = caller;
 	g_iDummyOwner = g_iOwner;
-	g_iDummyLasermine = g_iLasermine;
 
 	float fVelocity[3];
 	GetEntPropVector(activator, Prop_Data, "m_vecVelocity", fVelocity);
@@ -243,11 +241,6 @@ public void ZR_OnClientInfected(int client, int attacker, bool motherInfect, boo
 	OnClientDisconnect(client);
 }
 
-public Action OnSpec(int client, const char[] command, int argc)
-{
-	OnClientDisconnect(client);
-}
-
 public Action Command_PlantMine(int client, int argc)
 {
 	if(!IsValidClient(client))
@@ -272,14 +265,13 @@ public Action Command_PlantMine(int client, int argc)
 	int g_iDummyDamage;
 	int g_iDummyRadius;
 	int g_iDummyColor[3];
-	int g_iMine;
 
 	fDelayTime = fActivationTime;
 	g_iDummyDamage = g_iExplodeDamage;
 	g_iDummyRadius = g_iExplodeRadius;
 	g_iDummyColor = {0, 0, 255};
 
-	if((g_iMine = PlantMine(client, fDelayTime, g_iDummyDamage, g_iDummyRadius, g_iDummyColor)) == -1)
+	if((PlantMine(client, fDelayTime, g_iDummyDamage, g_iDummyRadius, g_iDummyColor)) == -1)
 	{
 		return Plugin_Handled;
 	}
@@ -395,7 +387,7 @@ void PickupLasermine(int client, int lasermine)
 	EmitSoundToClient(client, SND_PICKUPMINE);
 }
 
-int PlantMine(int client, float activation_delay = 0.0, int explode_damage, int explode_radius, const color[3] = {255, 255, 255})
+int PlantMine(int client, float activation_delay = 0.0, int explode_damage, int explode_radius, const int color[3] = {255, 255, 255})
 {
 	if(activation_delay > 10.0)
 	{
@@ -765,16 +757,18 @@ public any Native_ClearMapMines(Handle plugin, int numParams)
 	if(client < 1 || client > MaxClients)
 	{
 		ThrowNativeError(SP_ERROR_INDEX, "Client index %i is invalid", client);
-		return;
+		return 0;
 	}
 
 	else if(!IsClientInGame(client))
 	{
 		ThrowNativeError(SP_ERROR_NOT_FOUND, "Client %i is not in game", client);
-		return;
+		return 0;
 	}
 
 	OnClientDisconnect(client);
+
+	return -1;
 }
 
 public any Native_IsLasermine(Handle plugin, int numParams)
@@ -812,11 +806,13 @@ public any Native_SetClientMaxLasermines(Handle plugin, int numParams)
 	if(client < 1 || client > MaxClients)
 	{
 		ThrowNativeError(SP_ERROR_INDEX, "Client index %i is invalid", client);
+		return 0;
 	}
 
 	else if(!IsClientAuthorized(client))
 	{
 		ThrowNativeError(SP_ERROR_NOT_FOUND, "Client %i is not authorized", client);
+		return 0;
 	}
 
 	int g_iNativeAmount = GetNativeCell(2);
@@ -829,6 +825,8 @@ public any Native_SetClientMaxLasermines(Handle plugin, int numParams)
 	g_iClientsMaxLimit[client] = g_iNativeAmount;
 	g_iClientsMyAmount[client] = g_iNativeAmount;
 	g_iUsedByNative[client] = true;
+
+	return -1;
 }
 
 public any Native_ResetClientMaxLasermines(Handle plugin, int numParams)
@@ -846,6 +844,8 @@ public any Native_ResetClientMaxLasermines(Handle plugin, int numParams)
 	}
 
 	OnClientConnected(client);
+
+	return -1;
 }
 
 public any Native_GetBeamByLasermine(Handle plugin, int numParams)
