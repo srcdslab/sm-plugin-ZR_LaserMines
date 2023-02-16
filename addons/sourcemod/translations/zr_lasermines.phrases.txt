@@ -1,20 +1,24 @@
 "Phrases"
 {
-	"You can't use lasermines"
+	"Usage"
 	{
-		"en" "{green}[SM] {white}You need to be alive human to use lasermines"
+		"en" "{green}[SM] {white}You need to be a human to use this command."
 	}
-	"You don't have access to lasermines"
+	"NoAccess"
 	{
-		"en" "{green}[SM] {white}You don't have access to lasermines. Purchase VIP to get access!"
+		"en" "{green}[SM] {white}This command requires a VIP access."
 	}
-	"Infinity mines"
+	"InfiniteMines"
 	{
-		"en" "You have an infinite amount of laser mines"
+		"en" "You have an infinite amount of lasermines."
 	}
-	"Mines"
+	"MineAmount"
 	{
 		"#format" "{1:d}"
-		"en" "Laser mines: {1}"
+		"en" "Lasermines: {1}"
+	}
+	"InvalidLocation"
+	{
+		"en" "Hint: place the lasermine on a wall."
 	}
 }
