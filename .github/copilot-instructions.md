@@ -17,7 +17,7 @@ This repository contains a SourcePawn plugin for SourceMod that implements laser
 ### Core Technologies
 - **Language**: SourcePawn (.sp files)
 - **Platform**: SourceMod 1.11+ (compatible with 1.12+)
-- **Build System**: SourceKnight
+- **Build System**: Native GitHub Actions (spcomp via rumblefrog/setup-sp)
 - **CI/CD**: GitHub Actions
 - **Target Games**: Source engine games with Zombie:Reloaded
 
@@ -40,33 +40,29 @@ addons/sourcemod/
 
 ## Build Process
 
-### SourceKnight Configuration
-The project uses SourceKnight (`sourceknight.yaml`) for building:
+### GitHub Actions Configuration
+The project builds via native GitHub Actions (`.github/workflows/ci.yml`), no external build tool required:
 - **Project Name**: ZR_LaserMines
-- **Output**: `/addons/sourcemod/plugins`
-- **Target**: `ZR_LaserMines` (produces ZR_LaserMines.smx)
+- **Output**: `addons/sourcemod/plugins/ZR_LaserMines.smx`
+- **SourceMod version**: 1.12.x (via `rumblefrog/setup-sp`)
 
 ### Dependencies Resolution
-SourceKnight automatically downloads and configures:
-- SourceMod 1.11.0-git6917
-- ZombieReloaded plugin includes
-- MultiColors plugin
+The CI workflow clones and copies includes from:
+- ZombieReloaded (`srcdslab/sm-plugin-zombiereloaded`)
+- MultiColors (`srcdslab/sm-plugin-MultiColors`)
 
 ### Build Commands
 ```bash
-# Using SourceKnight (preferred)
-sourceknight build
-
-# Manual compilation (if SourceKnight unavailable)
-spcomp -i"include" ZR_LaserMines.sp
+# Manual compilation (with SourceMod includes available)
+spcomp -i include -o addons/sourcemod/plugins/ZR_LaserMines.smx addons/sourcemod/scripting/ZR_LaserMines.sp
 ```
 
 ### CI/CD Pipeline
 GitHub Actions workflow (`.github/workflows/ci.yml`):
-1. Builds plugin using SourceKnight action
-2. Creates packages with translations
-3. Uploads artifacts
-4. Creates releases for tags and main branch
+1. Installs SourcePawn compiler and dependency includes
+2. Compiles the plugin with `spcomp`
+3. Creates a package with the plugin and translations
+4. Uploads artifacts and creates releases for tags and main branch
 
 ## Code Standards & Best Practices
 
