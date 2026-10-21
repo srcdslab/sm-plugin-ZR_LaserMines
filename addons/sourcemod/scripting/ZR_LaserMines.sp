@@ -15,7 +15,7 @@
 #pragma semicolon 1
 #pragma newdecls required
 
-#define PLUGIN_VERSION "1.4.3"
+#define PLUGIN_VERSION "1.4.4"
 
 #define MDL_LASER "sprites/laser.vmt"
 #define MDL_MINE "models/props_lab/tpplug.mdl"
@@ -87,13 +87,13 @@ public void OnPluginStart()
 	g_cvMineActivationTime = CreateConVar("zr_lasermines_activatetime", "2", "The delay of laser mines' activation", _, true, 0.0, true, 10.0);
 	g_cvAllowPickup = CreateConVar("zr_lasermines_allow_pickup", "1", "Allow players to pickup their planted lasermines");
 
-	HookConVarChange(g_cvSpawnMineAmount, OnConVarChanged);
-	HookConVarChange(g_cvMaxMineAmount, OnConVarChanged);
-	HookConVarChange(g_cvMineDamage, OnConVarChanged);
-	HookConVarChange(g_cvMineExplodeDamage, OnConVarChanged);
-	HookConVarChange(g_cvMineExplodeRadius, OnConVarChanged);
-	HookConVarChange(g_cvMineActivationTime, OnConVarChanged);
-	HookConVarChange(g_cvAllowPickup, OnConVarChanged);
+	g_cvSpawnMineAmount.AddChangeHook(OnConVarChanged);
+	g_cvMaxMineAmount.AddChangeHook(OnConVarChanged);
+	g_cvMineDamage.AddChangeHook(OnConVarChanged);
+	g_cvMineExplodeDamage.AddChangeHook(OnConVarChanged);
+	g_cvMineExplodeRadius.AddChangeHook(OnConVarChanged);
+	g_cvMineActivationTime.AddChangeHook(OnConVarChanged);
+	g_cvAllowPickup.AddChangeHook(OnConVarChanged);
 
 	HookEvent("player_spawn", OnPlayerSpawn);
 	HookEvent("player_death", OnPlayerDeath);
@@ -147,9 +147,9 @@ public void OnConfigsExecuted()
 
 public void OnPlayerTeam(Event event, const char[] name, bool dontBroadcast)
 {
-	if(GetEventInt(event, "team") < 2)
+	if(event.GetInt("team") < 2)
 	{
-		OnClientDisconnect(GetClientOfUserId(GetEventInt(event, "userid")));
+		OnClientDisconnect(GetClientOfUserId(event.GetInt("userid")));
 	}
 }
 
@@ -211,26 +211,26 @@ public void OnTouchedByEntity(const char[] output, int caller, int activator, fl
 
 public void OnPlayerSpawn(Event event, const char[] name, bool dontBroadcast)
 {
-	int client = GetClientOfUserId(GetEventInt(event, "userid"));
+	int client = GetClientOfUserId(event.GetInt("userid"));
 	g_iClientsAmount[client] = g_iClientsMyAmount[client];
 }
 
 public void OnPlayerDeath(Event event, const char[] name, bool dontBroadcast)
 {
-	int client = GetClientOfUserId(GetEventInt(event, "userid"));
+	int client = GetClientOfUserId(event.GetInt("userid"));
 	OnClientDisconnect(client);
 }
 
 public Action OnPlayerDeath_Pre(Event event, const char[] name, bool dontBroadcast)
 {
-	int attacker = GetClientOfUserId(GetEventInt(event, "attacker"));
+	int attacker = GetClientOfUserId(event.GetInt("attacker"));
 	if (1 <= attacker <= MaxClients)
 	{
 		char Weapon[32];
-		GetEventString(event, "weapon", Weapon, sizeof(Weapon));
+		event.GetString("weapon", Weapon, sizeof(Weapon));
 		if(StrEqual(Weapon, "env_beam"))
 		{
-			SetEventString(event, "weapon", "shieldgun");
+			event.SetString("weapon", "shieldgun");
 		}
 	}
 	return Plugin_Continue;
@@ -317,7 +317,7 @@ void OnButtonPressed(int client)
 
 	if(TR_DidHit(g_hTrace) && (g_iEnt = TR_GetEntityIndex(g_hTrace)) > MaxClients)
 	{	
-		CloseHandle(g_hTrace);
+		delete g_hTrace;
 
 		int g_iOwner = ZR_GetClientByLasermine(g_iEnt);
 
@@ -334,7 +334,7 @@ void OnButtonPressed(int client)
 
 	else
 	{
-		CloseHandle(g_hTrace);
+		delete g_hTrace;
 	}
 }
 
@@ -410,12 +410,12 @@ int PlantMine(int client, float activation_delay = 0.0, int explode_damage, int 
 		TR_GetEndPosition(fEnd, g_hTrace);
 		TR_GetPlaneNormal(g_hTrace, fNormal);
 
-		CloseHandle(g_hTrace);
+		delete g_hTrace;
 
 		GetVectorAngles(fNormal, fNormal);
 
 		TR_TraceRayFilter(fEnd, fNormal, CONTENTS_SOLID, RayType_Infinite, FilterAll);
-		TR_GetEndPosition(fBeamEnd, INVALID_HANDLE);
+		TR_GetEndPosition(fBeamEnd, null);
 
 		int g_iMineEnt = CreateEntityByName("prop_physics_override");
 		if(g_iMineEnt == -1 || !IsValidEdict(g_iMineEnt))
@@ -527,13 +527,13 @@ int PlantMine(int client, float activation_delay = 0.0, int explode_damage, int 
 		SetEntPropEnt(g_iMineEnt, Prop_Data, "m_hMoveChild", g_iBeamEnt);
 		SetEntPropEnt(g_iBeamEnt, Prop_Data, "m_hEffectEntity", g_iMineEnt);
 
-		Handle g_hDatapack = CreateDataPack();
-		WritePackCell(g_hDatapack, g_iBeamEnt);
-		WritePackCell(g_hDatapack, g_iMineEnt);
-		WritePackCell(g_hDatapack, color[0]);
-		WritePackCell(g_hDatapack, color[1]);
-		WritePackCell(g_hDatapack, color[2]);
-		WritePackString(g_hDatapack, Start);
+		DataPack g_hDatapack = new DataPack();
+		g_hDatapack.WriteCell(g_iBeamEnt);
+		g_hDatapack.WriteCell(g_iMineEnt);
+		g_hDatapack.WriteCell(color[0]);
+		g_hDatapack.WriteCell(color[1]);
+		g_hDatapack.WriteCell(color[2]);
+		g_hDatapack.WriteString(Start);
 		CreateTimer(activation_delay, OnActivateLaser, g_hDatapack, TIMER_FLAG_NO_MAPCHANGE|TIMER_HNDL_CLOSE);
 
 		SetEntPropEnt(g_iMineEnt, Prop_Send, "m_PredictableID", client);
@@ -545,7 +545,7 @@ int PlantMine(int client, float activation_delay = 0.0, int explode_damage, int 
 	
 	else
 	{
-		CloseHandle(g_hTrace);
+		delete g_hTrace;
 	}
 
 	return -1;
@@ -581,19 +581,19 @@ public Action OnTakeDamage(int victim, int& attacker, int& inflictor, float& dam
 	return Plugin_Continue;
 }
 
-public Action OnActivateLaser(Handle Timer, any hDataPack)
+public Action OnActivateLaser(Handle Timer, DataPack hDataPack)
 {
-	ResetPack(hDataPack);
+	hDataPack.Reset();
 
 	char Start[32], Temp[256];
 	int g_iColor[3];
 
-	int g_iBeamEnt = ReadPackCell(hDataPack);
-	int g_iEnt = ReadPackCell(hDataPack);
-	g_iColor[0] = ReadPackCell(hDataPack);
-	g_iColor[1] = ReadPackCell(hDataPack);
-	g_iColor[2] = ReadPackCell(hDataPack);
-	ReadPackString(hDataPack, Start, sizeof(Start));
+	int g_iBeamEnt = hDataPack.ReadCell();
+	int g_iEnt = hDataPack.ReadCell();
+	g_iColor[0] = hDataPack.ReadCell();
+	g_iColor[1] = hDataPack.ReadCell();
+	g_iColor[2] = hDataPack.ReadCell();
+	hDataPack.ReadString(Start, sizeof(Start));
 
 	if (!IsValidEdict(g_iBeamEnt) || !IsValidEdict(g_iEnt))
 	{
