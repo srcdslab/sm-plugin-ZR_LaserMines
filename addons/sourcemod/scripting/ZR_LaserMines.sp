@@ -15,7 +15,7 @@
 #pragma semicolon 1
 #pragma newdecls required
 
-#define PLUGIN_VERSION "1.4.4"
+#define PLUGIN_VERSION "1.4.5"
 
 #define MDL_LASER "sprites/laser.vmt"
 #define MDL_MINE "models/props_lab/tpplug.mdl"
@@ -381,7 +381,7 @@ void PickupLasermine(int client, int lasermine)
 
 	else
 	{
-		PrintHintText(client, "%t", "Infinity mines");
+		PrintHintText(client, "%t", "InfiniteMines");
 	}
 
 	EmitSoundToClient(client, SND_PICKUPMINE);
