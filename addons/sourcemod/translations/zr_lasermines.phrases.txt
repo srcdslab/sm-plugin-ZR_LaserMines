@@ -3,22 +3,52 @@
 	"Usage"
 	{
 		"en" "{green}[SM] {white}You need to be a human to use this command."
+		"fr" "{green}[SM] {white}Vous devez être humain pour utiliser cette commande."
+		"ru" "{green}[SM] {white}Вы должны быть человеком, чтобы использовать эту команду."
+		"es" "{green}[SM] {white}Debes ser humano para usar este comando."
+		"de" "{green}[SM] {white}Du musst ein Mensch sein, um diesen Befehl zu nutzen."
+		"pt" "{green}[SM] {white}Você precisa ser humano para usar este comando."
+		"chi" "{green}[SM] {white}你必须是人类才能使用此命令。"
 	}
 	"NoAccess"
 	{
-		"en" "{green}[SM] {white}This command requires a VIP access."
+		"en" "{green}[SM] {white}This command requires VIP access."
+		"fr" "{green}[SM] {white}Cette commande nécessite un accès VIP."
+		"ru" "{green}[SM] {white}Для этой команды требуется VIP-доступ."
+		"es" "{green}[SM] {white}Este comando requiere acceso VIP."
+		"de" "{green}[SM] {white}Dieser Befehl erfordert VIP-Zugang."
+		"pt" "{green}[SM] {white}Este comando requer acesso VIP."
+		"chi" "{green}[SM] {white}此命令需要VIP权限。"
 	}
 	"InfiniteMines"
 	{
 		"en" "You have an infinite amount of lasermines."
+		"fr" "Vous avez un nombre infini de mines laser."
+		"ru" "У вас бесконечное количество лазерных мин."
+		"es" "Tienes minas láser infinitas."
+		"de" "Du hast unendlich viele Laserminen."
+		"pt" "Você tem minas laser infinitas."
+		"chi" "你拥有无限激光地雷。"
 	}
 	"MineAmount"
 	{
 		"#format" "{1:d}"
 		"en" "Lasermines: {1}"
+		"fr" "Mines laser : {1}"
+		"ru" "Лазерные мины: {1}"
+		"es" "Minas láser: {1}"
+		"de" "Laserminen: {1}"
+		"pt" "Minas laser: {1}"
+		"chi" "激光地雷：{1}"
 	}
 	"InvalidLocation"
 	{
 		"en" "Hint: place the lasermine on a wall."
+		"fr" "Astuce : placez la mine laser sur un mur."
+		"ru" "Подсказка: устанавливайте лазерную мину на стену."
+		"es" "Consejo: coloca la mina láser en una pared."
+		"de" "Tipp: Platziere die Lasermine an einer Wand."
+		"pt" "Dica: coloque a mina laser em uma parede."
+		"chi" "提示：请将激光地雷放置在墙上。"
 	}
 }
