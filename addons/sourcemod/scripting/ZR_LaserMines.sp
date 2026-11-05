@@ -15,7 +15,7 @@
 #pragma semicolon 1
 #pragma newdecls required
 
-#define PLUGIN_VERSION "1.4.5"
+#define PLUGIN_VERSION "1.4.6"
 
 #define MDL_LASER "sprites/laser.vmt"
 #define MDL_MINE "models/props_lab/tpplug.mdl"
@@ -41,6 +41,10 @@ int g_iClientsAmount[MAXPLAYERS+1];
 int g_iClientsMyAmount[MAXPLAYERS+1];
 int g_iClientsMaxLimit[MAXPLAYERS+1];
 int g_iUsedByNative[MAXPLAYERS+1];
+
+// References of the mines each client planted: removing a client's mines (death, infection,
+// disconnect) only checks these instead of every edict
+ArrayList g_hClientMines[MAXPLAYERS+1];
 
 float fActivationTime;
 
@@ -114,6 +118,17 @@ public void OnPluginStart()
 	{
 		g_bLate = false;
 		OnMapStart();
+
+		// Pick up the mines planted before a reload, once
+		int iMaxEdicts = GetMaxEntities();
+		for(int i = MaxClients+1; i <= iMaxEdicts; i++)
+		{
+			int owner = ZR_GetClientByLasermine(i);
+			if(1 <= owner <= MaxClients)
+			{
+				TrackMine(owner, i);
+			}
+		}
 	}
 }
 
@@ -164,18 +179,46 @@ public void OnClientConnected(int client)
 
 public void OnClientDisconnect(int client)
 {
-	int iMaxEdicts = GetMaxEntities();
-	for(int i = MaxClients+1; i <= iMaxEdicts; i++)
+	// Runs on every death and infection too: only check the mines this client planted.
+	// A mine still counts only if it is still a lasermine owned by the client.
+	ArrayList hMines = g_hClientMines[client];
+	if(hMines != null)
 	{
-		if(ZR_GetClientByLasermine(i) == client)
+		for(int i = 0; i < hMines.Length; i++)
 		{
-			SDKUnhook(i, SDKHook_OnTakeDamage, OnTakeDamage);
-			AcceptEntityInput(i, "KillHierarchy");
+			int mine = EntRefToEntIndex(hMines.Get(i));
+			if(mine != INVALID_ENT_REFERENCE && ZR_GetClientByLasermine(mine) == client)
+			{
+				SDKUnhook(mine, SDKHook_OnTakeDamage, OnTakeDamage);
+				AcceptEntityInput(mine, "KillHierarchy");
+			}
 		}
+
+		hMines.Clear();
 	}
 
 	g_iClientsAmount[client] = 0;
 	g_iUsedByNative[client] = false;
+}
+
+void TrackMine(int client, int mine)
+{
+	if(g_hClientMines[client] == null)
+	{
+		g_hClientMines[client] = new ArrayList();
+	}
+
+	// Drop the mines already gone (picked up, broken) so the list stays short
+	ArrayList hMines = g_hClientMines[client];
+	for(int i = hMines.Length - 1; i >= 0; i--)
+	{
+		if(EntRefToEntIndex(hMines.Get(i)) == INVALID_ENT_REFERENCE)
+		{
+			hMines.Erase(i);
+		}
+	}
+
+	hMines.Push(EntIndexToEntRef(mine));
 }
 
 public void OnTouchedByEntity(const char[] output, int caller, int activator, float delay)
@@ -539,6 +582,8 @@ int PlantMine(int client, float activation_delay = 0.0, int explode_damage, int 
 		SetEntPropEnt(g_iMineEnt, Prop_Send, "m_PredictableID", client);
 
 		SDKHook(g_iMineEnt, SDKHook_OnTakeDamage, OnTakeDamage);
+
+		TrackMine(client, g_iMineEnt);
 
 		return g_iMineEnt;
 	}
