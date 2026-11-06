@@ -10,12 +10,16 @@
 #include <zombiereloaded>
 #include <zr_lasermines>
 #include <multicolors>
+#include <clientprefs>
 
-#pragma tabsize 0
+#undef REQUIRE_PLUGIN
+#tryinclude <DynamicChannels>
+#define REQUIRE_PLUGIN
+
 #pragma semicolon 1
 #pragma newdecls required
 
-#define PLUGIN_VERSION "1.4.6"
+#define PLUGIN_VERSION "1.7.0"
 
 #define MDL_LASER "sprites/laser.vmt"
 #define MDL_MINE "models/props_lab/tpplug.mdl"
@@ -24,37 +28,39 @@
 #define SND_MINEACTIVATED "npc/roller/mine/rmine_blades_in2.wav"
 #define SND_PICKUPMINE "items/itempickup.wav"
 
+#define MAX_EDICTS 2048
+
 ConVar g_cvSpawnMineAmount;
 ConVar g_cvMaxMineAmount;
 ConVar g_cvMineDamage;
-ConVar g_cvMineExplodeDamage;
-ConVar g_cvMineExplodeRadius;
 ConVar g_cvMineActivationTime;
 ConVar g_cvAllowPickup;
+ConVar g_cvNadePickup;
+ConVar g_cvMineHP;
+ConVar g_cvHUDChannel;
 
-int g_iAmount;
-int g_iMaxAmount;
-int g_iDamage;
-int g_iExplodeDamage;
-int g_iExplodeRadius;
-int g_iClientsAmount[MAXPLAYERS+1];
+int g_iMineHP[2049];
+int g_iAmountLeft[MAXPLAYERS+1];
 int g_iClientsMyAmount[MAXPLAYERS+1];
 int g_iClientsMaxLimit[MAXPLAYERS+1];
-int g_iUsedByNative[MAXPLAYERS+1];
+int g_iButtonMarkerCount[MAXPLAYERS + 1] = {0, ... };
+
+bool g_bPlugin_DynamicChannels = false;
+bool g_bUsedByNative[MAXPLAYERS+1] = { false, ... };
+bool g_bShorcut[MAXPLAYERS + 1];
+bool g_bLate;
+
+Handle g_hHudMsg;
+Cookie g_hShortcut;
 
 // References of the mines each client planted: removing a client's mines (death, infection,
 // disconnect) only checks these instead of every edict
 ArrayList g_hClientMines[MAXPLAYERS+1];
 
-float fActivationTime;
-
-bool g_bAllowPickup;
-bool g_bLate;
-
-public Plugin myinfo = 
+public Plugin myinfo =
 {
 	name = "[ZR] Lasermines",
-	author = "FrozDark (HLModders.ru LLC), ire.",
+	author = "FrozDark (HLModders.ru LLC), ire., .Rushaway",
 	description = "Plants a laser mine",
 	version = PLUGIN_VERSION,
 	url = "http://www.hlmod.ru/"
@@ -82,22 +88,17 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 }
 
 public void OnPluginStart()
-{	
-	g_cvSpawnMineAmount = CreateConVar("zr_lasermines_amount", "2", "The amount to give laser mines to a player each spawn (-1 = Infinity)", _, true, -1.0);
-	g_cvMaxMineAmount = CreateConVar("zr_lasermines_maxamount", "2", "The maximum amount of laser mines a player can carry. (0-Unlimited)", _, true, 0.0);
-	g_cvMineDamage = CreateConVar("zr_lasermines_damage", "1", "The damage to deal to a player by the laser", _, true, 1.0, true, 100000.0);
-	g_cvMineExplodeDamage = CreateConVar("zr_lasermines_explode_damage", "100", "The damage to deal to a player when a laser mine breaks", _, true, 0.0, true, 100000.0);
-	g_cvMineExplodeRadius = CreateConVar("zr_lasermines_explode_radius", "300", "The radius of the explosion", _, true, 1.0, true, 100000.0);
-	g_cvMineActivationTime = CreateConVar("zr_lasermines_activatetime", "2", "The delay of laser mines' activation", _, true, 0.0, true, 10.0);
-	g_cvAllowPickup = CreateConVar("zr_lasermines_allow_pickup", "1", "Allow players to pickup their planted lasermines");
+{
+	LoadTranslations("zr_lasermines.phrases");
 
-	g_cvSpawnMineAmount.AddChangeHook(OnConVarChanged);
-	g_cvMaxMineAmount.AddChangeHook(OnConVarChanged);
-	g_cvMineDamage.AddChangeHook(OnConVarChanged);
-	g_cvMineExplodeDamage.AddChangeHook(OnConVarChanged);
-	g_cvMineExplodeRadius.AddChangeHook(OnConVarChanged);
-	g_cvMineActivationTime.AddChangeHook(OnConVarChanged);
-	g_cvAllowPickup.AddChangeHook(OnConVarChanged);
+	g_cvSpawnMineAmount = CreateConVar("zr_lasermines_amount", "2", "The amount to give lasermines to a player each spawn (-1 = Unlimited)", _, true, -1.0);
+	g_cvMaxMineAmount = CreateConVar("zr_lasermines_maxamount", "2", "The maximum amount of lasermines a player can carry. (0 = Unlimited)", _, true, 0.0);
+	g_cvMineDamage = CreateConVar("zr_lasermines_damage", "1", "The damage to deal to a player by the laser", _, true, 1.0, true, 100000.0);
+	g_cvMineActivationTime = CreateConVar("zr_lasermines_activatetime", "2", "The delay of lasermines' activation", _, true, 0.0, true, 10.0);
+	g_cvAllowPickup = CreateConVar("zr_lasermines_allow_pickup", "1", "Allow players to pickup their planted lasermines [1 = yes 0 = no]");
+	g_cvNadePickup = CreateConVar("zr_lasermines_nade_pickup", "1", "Allow players to pickup their planted lasermines with grenades [1 = yes 0 = no]");
+	g_cvMineHP = CreateConVar("zr_lasermines_hp", "500", "The HP of lasermines");
+	g_cvHUDChannel = CreateConVar("zr_lasermines_hud_channel", "5", "The channel for the hud if using DynamicChannels", _, true, 0.0, true, 5.0);
 
 	HookEvent("player_spawn", OnPlayerSpawn);
 	HookEvent("player_death", OnPlayerDeath);
@@ -108,28 +109,55 @@ public void OnPluginStart()
 	RegConsoleCmd("sm_plant", Command_PlantMine, "Plant a laser mine");
 	RegConsoleCmd("sm_lm", Command_PlantMine, "Plant a laser mine");
 
+	/* COOKIES */
+	SetCookieMenuItem(LaserMinesCookieHandler, 0, "LaserMines Settings");
+	g_hShortcut = new Cookie("zr_lasermines_shortcut", "LaserMines ShortCut", CookieAccess_Protected);
+
 	HookEntityOutput("env_beam", "OnTouchedByEntity", OnTouchedByEntity);
 
-	LoadTranslations("zr_lasermines.phrases");
+	g_hHudMsg = CreateHudSynchronizer();
 
 	AutoExecConfig(true);
 
-	if(g_bLate)
+	if (g_bLate)
 	{
-		g_bLate = false;
 		OnMapStart();
+		for (int i = 1; i <= MaxClients; i++)
+		{
+			if (!IsClientConnected(i) || IsFakeClient(i))
+				continue;
+
+			OnClientConnected(i);
+		}
 
 		// Pick up the mines planted before a reload, once
 		int iMaxEdicts = GetMaxEntities();
-		for(int i = MaxClients+1; i <= iMaxEdicts; i++)
+		for (int i = MaxClients+1; i <= iMaxEdicts; i++)
 		{
-			int owner = ZR_GetClientByLasermine(i);
-			if(1 <= owner <= MaxClients)
-			{
-				TrackMine(owner, i);
-			}
+			int iOwner = ZR_GetClientByLasermine(i);
+			if (iOwner >= 1 && iOwner <= MaxClients)
+				TrackMine(iOwner, i);
 		}
 	}
+
+	g_bLate = false;
+}
+
+public void OnAllPluginsLoaded()
+{
+	g_bPlugin_DynamicChannels = LibraryExists("DynamicChannels");
+}
+
+public void OnLibraryAdded(const char[] name)
+{
+	if (strcmp(name, "DynamicChannels", false) == 0)
+		g_bPlugin_DynamicChannels = true;
+}
+
+public void OnLibraryRemoved(const char[] name)
+{
+	if (strcmp(name, "DynamicChannels", false) == 0)
+		g_bPlugin_DynamicChannels = false;
 }
 
 public void OnMapStart()
@@ -140,122 +168,178 @@ public void OnMapStart()
 	PrecacheSound(SND_PUTMINE, true);
 	PrecacheSound(SND_MINEACTIVATED, true);
 	PrecacheSound(SND_PICKUPMINE, true);
-
-	OnConfigsExecuted();
-}
-
-public void OnConVarChanged(ConVar convar, const char[] oldValue, const char[] newValue)
-{
-	OnConfigsExecuted();
-}
-
-public void OnConfigsExecuted()
-{
-	g_iAmount = g_cvSpawnMineAmount.IntValue;
-	g_iMaxAmount = g_cvMaxMineAmount.IntValue;
-	g_iDamage = g_cvMineDamage.IntValue;
-	g_iExplodeDamage = g_cvMineExplodeDamage.IntValue;
-	g_iExplodeRadius = g_cvMineExplodeRadius.IntValue;
-	fActivationTime = g_cvMineActivationTime.FloatValue;
-	g_bAllowPickup = g_cvAllowPickup.BoolValue;
 }
 
 public void OnPlayerTeam(Event event, const char[] name, bool dontBroadcast)
 {
-	if(event.GetInt("team") < 2)
-	{
-		OnClientDisconnect(GetClientOfUserId(event.GetInt("userid")));
-	}
+	if (event.GetInt("team") != 1)
+		return;
+
+	OnClientDisconnect(GetClientOfUserId(event.GetInt("userid")));
 }
 
 public void OnClientConnected(int client)
 {
-	if(!g_iUsedByNative[client])
+	if (!g_bUsedByNative[client])
 	{
-		g_iClientsMaxLimit[client] = g_iMaxAmount;
-		g_iClientsMyAmount[client] = g_iAmount;
+		g_iClientsMaxLimit[client] = g_cvMaxMineAmount.IntValue;
+		g_iClientsMyAmount[client] = g_cvSpawnMineAmount.IntValue;
 	}
+
+	if (AreClientCookiesCached(client))
+		ReadClientCookies(client);
+}
+
+public void OnClientCookiesCached(int client)
+{
+	ReadClientCookies(client);
+}
+
+public void ReadClientCookies(int client)
+{
+	char buffer[32];
+	g_hShortcut.Get(client, buffer, sizeof(buffer));
+	g_bShorcut[client] = view_as<bool>(StringToInt(buffer)) || buffer[0] == '\0';
+}
+
+public void SetClientCookies(int client)
+{
+	if (!AreClientCookiesCached(client) || IsFakeClient(client))
+		return;
+
+	char sValue[8];
+	FormatEx(sValue, sizeof(sValue), "%i", g_bShorcut[client]);
+	g_hShortcut.Set(client, sValue);
 }
 
 public void OnClientDisconnect(int client)
 {
+	// player_death can come after the client left
+	if (client < 1)
+		return;
+
 	// Runs on every death and infection too: only check the mines this client planted.
 	// A mine still counts only if it is still a lasermine owned by the client.
 	ArrayList hMines = g_hClientMines[client];
-	if(hMines != null)
+	if (hMines != null)
 	{
-		for(int i = 0; i < hMines.Length; i++)
+		for (int i = 0; i < hMines.Length; i++)
 		{
-			int mine = EntRefToEntIndex(hMines.Get(i));
-			if(mine != INVALID_ENT_REFERENCE && ZR_GetClientByLasermine(mine) == client)
+			int iMine = EntRefToEntIndex(hMines.Get(i));
+			if (iMine != INVALID_ENT_REFERENCE && ZR_GetClientByLasermine(iMine) == client)
 			{
-				SDKUnhook(mine, SDKHook_OnTakeDamage, OnTakeDamage);
-				AcceptEntityInput(mine, "KillHierarchy");
+				SDKUnhook(iMine, SDKHook_OnTakeDamage, OnTakeDamage);
+				AcceptEntityInput(iMine, "KillHierarchy");
 			}
 		}
 
 		hMines.Clear();
 	}
 
-	g_iClientsAmount[client] = 0;
-	g_iUsedByNative[client] = false;
+	g_iAmountLeft[client] = 0;
+	g_bUsedByNative[client] = false;
+	SetClientCookies(client);
 }
 
 void TrackMine(int client, int mine)
 {
-	if(g_hClientMines[client] == null)
-	{
+	if (g_hClientMines[client] == null)
 		g_hClientMines[client] = new ArrayList();
-	}
 
-	// Drop the mines already gone (picked up, broken) so the list stays short
+	// Drop the mines already gone (picked up, destroyed) so the list stays short
 	ArrayList hMines = g_hClientMines[client];
-	for(int i = hMines.Length - 1; i >= 0; i--)
+	for (int i = hMines.Length - 1; i >= 0; i--)
 	{
-		if(EntRefToEntIndex(hMines.Get(i)) == INVALID_ENT_REFERENCE)
-		{
+		if (EntRefToEntIndex(hMines.Get(i)) == INVALID_ENT_REFERENCE)
 			hMines.Erase(i);
-		}
 	}
 
 	hMines.Push(EntIndexToEntRef(mine));
 }
 
+public void LaserMinesCookieHandler(int client, CookieMenuAction action, any info, char[] buffer, int maxlen)
+{
+	switch (action)
+	{
+		case CookieMenuAction_SelectOption:
+			LaserMinesSetting(client);
+	}
+}
+
+public void LaserMinesSetting(int client)
+{
+	Menu menu = new Menu(LaserMinesSettingHandler, MENU_ACTIONS_ALL);
+	menu.SetTitle("%T %T", "Menu Prefix", client, "Client Setting", client);
+
+	char shortcut[64];
+	FormatEx(shortcut, 64, "%T", "Shortcut", client);
+	menu.AddItem("shortcut", shortcut);
+
+	menu.ExitBackButton = true;
+	menu.ExitButton = true;
+	menu.Display(client, MENU_TIME_FOREVER);
+}
+
+public int LaserMinesSettingHandler(Menu menu, MenuAction action, int param1, int param2)
+{
+	switch (action)
+	{
+		case MenuAction_DisplayItem:
+		{
+			char info[64], display[64];
+			menu.GetItem(param2, info, sizeof(info));
+			if (strcmp(info, "shortcut", false) == 0)
+			{
+				FormatEx(display, sizeof(display), "%T : %T", "Shortcut", param1, g_bShorcut[param1] ? "Enabled" : "Disabled", param1);
+				return RedrawMenuItem(display);
+			}
+		}
+		case MenuAction_Select:
+		{
+			char info[64];
+			menu.GetItem(param2, info, sizeof(info));
+			if (strcmp(info, "shortcut", false) == 0)
+			{
+				char status[32];
+				g_bShorcut[param1] = !g_bShorcut[param1];
+				FormatEx(status, 64, "%T", g_bShorcut[param1] ? "Enabled" : "Disabled", param1);
+				CPrintToChat(param1, "{green}[SM] {white}%T", "You set shortcut", param1, status);
+			}
+
+			LaserMinesSetting(param1);
+		}
+		case MenuAction_Cancel:
+			ShowCookieMenu(param1);
+		case MenuAction_End:
+			delete menu;
+	}
+	return 0;
+}
+
 public void OnTouchedByEntity(const char[] output, int caller, int activator, float delay)
 {
-	if (!(1 <= activator <= MaxClients))
-	{
+	if (activator < 1 || activator > MaxClients)
 		return;
-	}
 
-	int g_iOwner = GetEntPropEnt(caller, Prop_Data, "m_hOwnerEntity");
-	int g_iLasermine = ZR_GetLasermineByBeam(caller);
-
-	if (g_iOwner == -1 || g_iLasermine == -1  || activator == g_iOwner || ZR_IsClientHuman(activator))
-	{
+	if (ZR_IsClientHuman(activator))
 		return;
-	}
 
-	int g_iDummyDamage;
-	int g_iDummyCaller;
-	int g_iDummyOwner;
+	int iOwner = GetEntPropEnt(caller, Prop_Data, "m_hOwnerEntity");
+	if (iOwner == -1 || activator == iOwner)
+		return;
 
-	g_iDummyDamage = g_iDamage;
-	g_iDummyCaller = caller;
-	g_iDummyOwner = g_iOwner;
-
+	float fDummyDamage = g_cvMineDamage.FloatValue;
 	float fVelocity[3];
+
 	GetEntPropVector(activator, Prop_Data, "m_vecVelocity", fVelocity);
-	
-	SDKHooks_TakeDamage(activator, g_iDummyCaller, g_iDummyOwner, float(g_iDummyDamage), DMG_ENERGYBEAM);
-	
+	SDKHooks_TakeDamage(activator, caller, iOwner, fDummyDamage, DMG_ENERGYBEAM);
 	TeleportEntity(activator, NULL_VECTOR, NULL_VECTOR, fVelocity);
 }
 
 public void OnPlayerSpawn(Event event, const char[] name, bool dontBroadcast)
 {
 	int client = GetClientOfUserId(event.GetInt("userid"));
-	g_iClientsAmount[client] = g_iClientsMyAmount[client];
+	g_iAmountLeft[client] = g_iClientsMyAmount[client];
 }
 
 public void OnPlayerDeath(Event event, const char[] name, bool dontBroadcast)
@@ -267,15 +351,14 @@ public void OnPlayerDeath(Event event, const char[] name, bool dontBroadcast)
 public Action OnPlayerDeath_Pre(Event event, const char[] name, bool dontBroadcast)
 {
 	int attacker = GetClientOfUserId(event.GetInt("attacker"));
-	if (1 <= attacker <= MaxClients)
-	{
-		char Weapon[32];
-		event.GetString("weapon", Weapon, sizeof(Weapon));
-		if(StrEqual(Weapon, "env_beam"))
-		{
-			event.SetString("weapon", "shieldgun");
-		}
-	}
+	if (attacker <= 0 || attacker > MaxClients)
+		return Plugin_Continue;
+
+	char Weapon[32];
+	event.GetString("weapon", Weapon, sizeof(Weapon));
+	if (strcmp(Weapon, "env_beam", false) == 0)
+		event.SetString("weapon", "shieldgun");
+
 	return Plugin_Continue;
 }
 
@@ -284,42 +367,27 @@ public void ZR_OnClientInfected(int client, int attacker, bool motherInfect, boo
 	OnClientDisconnect(client);
 }
 
-public Action Command_PlantMine(int client, int argc)
+public bool AttemptPlantMine(int client)
 {
-	if(!IsValidClient(client))
+	if (!IsValidClient(client))
 	{
 		CPrintToChat(client, "%t", "Usage");
-		return Plugin_Handled;
+		return false;
 	}
 
-	if(!AccessToLasermines(client))
+	if (g_iAmountLeft[client] != -1 && g_iAmountLeft[client] <= 0)
 	{
-		CPrintToChat(client, "%t", "NoAccess");
-		return Plugin_Handled;
+		PrintHintText(client, "%t", "MineAmount", g_iAmountLeft[client]);
+		return false;
 	}
 
-	if(!g_iClientsAmount[client])
-	{
-		PrintHintText(client, "%t", "MineAmount", g_iClientsAmount[client]);
-		return Plugin_Handled;
-	}
+	float fDelayTime = g_cvMineActivationTime.FloatValue;
+	int iDummyColor[3] = {0, 0, 255};
 
-	float fDelayTime;
-	int g_iDummyDamage;
-	int g_iDummyRadius;
-	int g_iDummyColor[3];
+	if (!PlantMine(client, fDelayTime, iDummyColor))
+		return false;
 
-	fDelayTime = fActivationTime;
-	g_iDummyDamage = g_iExplodeDamage;
-	g_iDummyRadius = g_iExplodeRadius;
-	g_iDummyColor = {0, 0, 255};
-
-	if((PlantMine(client, fDelayTime, g_iDummyDamage, g_iDummyRadius, g_iDummyColor)) == -1)
-	{
-		return Plugin_Handled;
-	}
-
-	switch(g_iClientsAmount[client])
+	switch (g_iAmountLeft[client])
 	{
 		case -1:
 		{
@@ -327,65 +395,386 @@ public Action Command_PlantMine(int client, int argc)
 		}
 		default:
 		{
-			g_iClientsAmount[client]--;
-			PrintHintText(client, "%t", "MineAmount", g_iClientsAmount[client]);
+			g_iAmountLeft[client]--;
+			PrintHintText(client, "%t", "MineAmount", g_iAmountLeft[client]);
 		}
 	}
 
+	return true;
+}
+
+public Action Command_PlantMine(int client, int argc)
+{
+	AttemptPlantMine(client);
 	return Plugin_Handled;
 }
 
-public Action OnPlayerRunCmd(int client, int& buttons, int& impulse, float vel[3], float angles[3], int& weapon, int& subtype, int& cmdnum, int& tickcount, int& seed, int mouse[2])
+void PickupLasermine(int client, int lasermine)
 {
-	static int g_iPrevButtons[MAXPLAYERS+1];
+	if (!IsValidClient(client) || g_iAmountLeft[client] >= 0 && g_iAmountLeft[client] == ZR_AddClientLasermines(client))
+		return;
 
-	if(!g_bAllowPickup || IsFakeClient(client) || !IsPlayerAlive(client) || ZR_IsClientZombie(client))
-		return Plugin_Continue;
-	
-	if((buttons & IN_USE) && !(g_iPrevButtons[client] & IN_USE))
+	AcceptEntityInput(lasermine, "KillHierarchy");
+
+	if (g_iAmountLeft[client] >= 0)
+		PrintHintText(client, "%t", "MineAmount", g_iAmountLeft[client]);
+	else
+		PrintHintText(client, "%t", "InfiniteMines");
+
+	EmitSoundToClient(client, SND_PICKUPMINE);
+}
+
+bool PlantMine(int client, float activation_delay = 0.0, int color[3] = {255, 255, 255})
+{
+	if (!IsValidClient(client))
+		return false;
+
+	Handle hTrace = TraceRay(client);
+
+	if (!TR_DidHit(hTrace) || TR_GetEntityIndex(hTrace) >= 1)
 	{
-		OnButtonPressed(client);
+		delete hTrace;
+		return false;
 	}
 
-	g_iPrevButtons[client] = buttons;
+	// Check edict count before creating any entity
+	int iCount = 0;
+	for (int entity = 1; entity <= MAX_EDICTS; entity++)
+	{
+		if (IsValidEdict(entity))
+			iCount++;
+	}
+
+	if (iCount >= MAX_EDICTS - 148)
+	{
+		for (int i = 1; i <= MaxClients; i++)
+		{
+			if (IsValidClient(i))
+				OnClientDisconnect(i);
+		}
+		LogError("Server was about to crash, all mines has been deleted. You should investigate this issue.");
+		delete hTrace;
+		return false;
+	}
+
+	// Retrieve surface data before closing the trace
+	float fEnd[3], fNormal[3], fBeamEnd[3];
+	TR_GetEndPosition(fEnd, hTrace);
+	TR_GetPlaneNormal(hTrace, fNormal);
+	delete hTrace;
+
+	GetVectorAngles(fNormal, fNormal);
+	TR_TraceRayFilter(fEnd, fNormal, CONTENTS_SOLID, RayType_Infinite, TraceRay_FilterAll);
+	TR_GetEndPosition(fBeamEnd, null);
+
+	// Create entities
+	int iMineEnt = CreateEntityByName("prop_dynamic_override");
+	int iBeamEnt = CreateEntityByName("env_beam");
+
+	if (iMineEnt == -1 || !IsValidEdict(iMineEnt) || iBeamEnt == -1 || !IsValidEdict(iBeamEnt))
+	{
+		LogError("Failed to create %s", iMineEnt == -1 ? "prop_dynamic_override" : "env_beam");
+		if (iMineEnt != -1 && IsValidEdict(iMineEnt))
+			AcceptEntityInput(iMineEnt, "Kill");
+		if (iBeamEnt != -1 && IsValidEdict(iBeamEnt))
+			AcceptEntityInput(iBeamEnt, "Kill");
+		return false;
+	}
+
+	char sStart[32], sTemp[256];
+	FormatEx(sStart, sizeof(sStart), "Beam%i", iBeamEnt);
+
+	// Setup mine entity
+	SetEntityModel(iMineEnt, MDL_MINE);
+	DispatchKeyValue(iMineEnt, "solid", "6");
+	DispatchKeyValue(iMineEnt, "CollisionGroup", "1");
+	SetEntProp(iMineEnt, Prop_Send, "m_usSolidFlags", 12);
+	DispatchKeyValue(iMineEnt, "rendercolor", "0 0 255");
+	DispatchSpawn(iMineEnt);
+	TeleportEntity(iMineEnt, fEnd, fNormal, NULL_VECTOR);
+
+	FormatEx(sTemp, sizeof(sTemp), "%s,Kill,,0,-1", sStart);
+	DispatchKeyValue(iMineEnt, "OnBreak", sTemp);
+
+	EmitSoundToAll(SND_PUTMINE, iMineEnt);
+
+	// Setup beam entity
+	DispatchKeyValue(iBeamEnt, "targetname", sStart);
+	DispatchKeyValue(iBeamEnt, "damage", "0");
+	DispatchKeyValue(iBeamEnt, "framestart", "0");
+	DispatchKeyValue(iBeamEnt, "BoltWidth", "4.0");
+	DispatchKeyValue(iBeamEnt, "renderfx", "0");
+	DispatchKeyValue(iBeamEnt, "TouchType", "3"); // 0 = none, 1 = player only, 2 = NPC only, 3 = player or NPC, 4 = player, NPC or physprop
+	DispatchKeyValue(iBeamEnt, "framerate", "0");
+	DispatchKeyValue(iBeamEnt, "decalname", "Bigshot");
+	DispatchKeyValue(iBeamEnt, "TextureScroll", "35");
+	DispatchKeyValue(iBeamEnt, "HDRColorScale", "1.0");
+	DispatchKeyValue(iBeamEnt, "texture", MDL_LASER);
+	DispatchKeyValue(iBeamEnt, "life", "0"); // 0 = infinite, beam life time in seconds
+	DispatchKeyValue(iBeamEnt, "StrikeTime", "1"); // If beam life time not infinite, this repeats it
+	DispatchKeyValue(iBeamEnt, "LightningStart", sStart);
+	DispatchKeyValue(iBeamEnt, "spawnflags", "0");
+	DispatchKeyValue(iBeamEnt, "NoiseAmplitude", "0"); // 0 = straight beam
+	DispatchKeyValue(iBeamEnt, "Radius", "256");
+	DispatchKeyValue(iBeamEnt, "renderamt", "100");
+	DispatchKeyValue(iBeamEnt, "rendercolor", "0 0 0");
+	AcceptEntityInput(iBeamEnt, "TurnOff");
+
+	SetEntityModel(iBeamEnt, MDL_LASER);
+	TeleportEntity(iBeamEnt, fBeamEnd, NULL_VECTOR, NULL_VECTOR);
+
+	SetEntPropVector(iBeamEnt, Prop_Data, "m_vecEndPos", fEnd);
+	SetEntPropFloat(iBeamEnt, Prop_Data, "m_fWidth", 3.0);
+	SetEntPropFloat(iBeamEnt, Prop_Data, "m_fEndWidth", 3.0);
+
+	// Link entities together
+	SetEntPropEnt(iBeamEnt, Prop_Data, "m_hOwnerEntity", client);
+	SetEntPropEnt(iMineEnt, Prop_Data, "m_hMoveChild", iBeamEnt);
+	SetEntPropEnt(iBeamEnt, Prop_Data, "m_hEffectEntity", iMineEnt);
+
+	// Store owner and HP on mine
+	SetEntPropEnt(iMineEnt, Prop_Send, "m_PredictableID", client);
+	g_iMineHP[iMineEnt] = g_cvMineHP.IntValue;
+
+	// Schedule activation
+	if (activation_delay > 10.0)
+		activation_delay = 10.0;
+	else if (activation_delay < 0.0)
+		activation_delay = 0.0;
+
+	DataPack hDataPack = new DataPack();
+	hDataPack.WriteCell(iBeamEnt);
+	hDataPack.WriteCell(iMineEnt);
+	hDataPack.WriteCell(color[0]);
+	hDataPack.WriteCell(color[1]);
+	hDataPack.WriteCell(color[2]);
+	hDataPack.WriteString(sStart);
+	CreateTimer(activation_delay, OnActivateLaser, hDataPack, TIMER_FLAG_NO_MAPCHANGE|TIMER_HNDL_CLOSE);
+
+	// Show pickup HUD hint
+	SetHudTextParams(-1.0, 0.7, 4.0, 255, 0, 0, 255);
+
+	bool bDynamicAvailable = g_bPlugin_DynamicChannels && CanTestFeatures() && GetFeatureStatus(FeatureType_Native, "GetDynamicChannel") == FeatureStatus_Available;
+	int iHUDChannel = -1;
+
+#if defined _DynamicChannels_included_
+	if (bDynamicAvailable)
+	{
+		int iChannel = g_cvHUDChannel.IntValue;
+		if (iChannel < 0 || iChannel > 5)
+			iChannel = 5;
+		iHUDChannel = GetDynamicChannel(iChannel);
+	}
+#endif
+
+	if (bDynamicAvailable)
+		ShowHudText(client, iHUDChannel, "%t", "PickUpInfo");
+	else
+	{
+		ClearSyncHud(client, g_hHudMsg);
+		ShowSyncHudText(client, g_hHudMsg, "%t", "PickUpInfo");
+	}
+
+	SDKHook(iMineEnt, SDKHook_OnTakeDamage, OnTakeDamage);
+
+	TrackMine(client, iMineEnt);
+
+	return true;
+}
+
+public Action OnTakeDamage(int victim, int& attacker, int& inflictor, float& damage, int& damagetype)
+{
+	if (!IsValidEdict(victim))
+		return Plugin_Continue;
+
+	if (attacker <= 0 || attacker > MaxClients)
+		return Plugin_Continue;
+
+	int iOwner = GetEntPropEnt(victim, Prop_Send, "m_PredictableID");
+	int iAttackerTeam = GetClientTeam(attacker);
+	int iOwnerTeam = (iOwner > 0 && iOwner <= MaxClients) ? GetClientTeam(iOwner) : -1;
+
+	if (attacker != iOwner && iOwner > 0 && iAttackerTeam == 3 && iOwnerTeam == 3)
+	{
+		PrintCenterText(attacker, "%t", "PlayerPropHP", g_iMineHP[victim], iOwner, "Human");
+		return Plugin_Continue;
+	}
+
+	int damageMultiplier = (!g_cvNadePickup.BoolValue && damagetype == DMG_BLAST && attacker == iOwner) ? 0 : (attacker == iOwner) ? 4 : 1;
+	g_iMineHP[victim] -= RoundToZero(damage) * damageMultiplier;
+
+	if (g_iMineHP[victim] > 0)
+	{
+		PrintCenterText(attacker, "%t", "PlayerPropHP", g_iMineHP[victim], iOwner, "Human");
+		return Plugin_Continue;
+	}
+
+	if (g_cvAllowPickup.BoolValue && attacker == iOwner)
+		PickupLasermine(attacker, victim);
+	else
+		AcceptEntityInput(victim, "KillHierarchy");
 
 	return Plugin_Continue;
 }
 
-void OnButtonPressed(int client)
+public Action OnActivateLaser(Handle Timer, DataPack hDataPack)
 {
-	Handle g_hTrace = TraceRay(client);
+	hDataPack.Reset();
 
-	int g_iEnt = -1;
+	char Start[32], Temp[256];
+	int iColor[3];
 
-	if(TR_DidHit(g_hTrace) && (g_iEnt = TR_GetEntityIndex(g_hTrace)) > MaxClients)
-	{	
-		delete g_hTrace;
+	int iBeamEnt = hDataPack.ReadCell();
+	int iEnt = hDataPack.ReadCell();
+	iColor[0] = hDataPack.ReadCell();
+	iColor[1] = hDataPack.ReadCell();
+	iColor[2] = hDataPack.ReadCell();
+	hDataPack.ReadString(Start, sizeof(Start));
 
-		int g_iOwner = ZR_GetClientByLasermine(g_iEnt);
+	if (!IsValidEdict(iBeamEnt) || !IsValidEdict(iEnt))
+		return Plugin_Stop;
 
-		if(g_iOwner == -1)
-		{
-			return;
-		}
-		if(g_iOwner == client)
-		{
-			PickupLasermine(client, g_iEnt);
-			return;
-		}
-	}
+	AcceptEntityInput(iBeamEnt, "TurnOn");
 
-	else
+	SetEntityRenderColor(iBeamEnt, iColor[0], iColor[1], iColor[2]);
+
+	FormatEx(Temp, sizeof(Temp), "%s,TurnOff,,0.001,-1", Start);
+	DispatchKeyValue(iBeamEnt, "OnTouchedByEntity", Temp);
+	FormatEx(Temp, sizeof(Temp), "%s,TurnOn,,0.002,-1", Start);
+	DispatchKeyValue(iBeamEnt, "OnTouchedByEntity", Temp);
+
+	EmitSoundToAll(SND_MINEACTIVATED, iEnt);
+
+	return Plugin_Stop;
+}
+
+// Flashlight x2 : Lasermines
+public Action OnPlayerRunCmd(int client, int &buttons, int &impulse)
+{
+	if (IsValidClient(client))
 	{
-		delete g_hTrace;
+		// Flashlight
+		if (impulse == 0x64)
+		{
+			QuickMarkerCommand(client);
+			return Plugin_Continue;
+		}
 	}
+
+	return Plugin_Continue;
+}
+
+stock void QuickMarkerCommand(int client)
+{
+	if (g_bShorcut[client])
+	{
+		g_iButtonMarkerCount[client]++;
+		CreateTimer(1.0, ResetMarkerButtonPressed, client, TIMER_FLAG_NO_MAPCHANGE);
+	}
+
+	if (g_iButtonMarkerCount[client] >= 2 && IsValidClient(client))
+		AttemptPlantMine(client);
+}
+
+public Action ResetMarkerButtonPressed(Handle timer, any client)
+{
+	g_iButtonMarkerCount[client] = 0;
+	return Plugin_Handled;
+}
+
+// NATIVES
+public int Native_AddMines(Handle plugin, int numParams)
+{
+	int client = GetNativeCell(1);
+
+	if (client < 1 || client > MaxClients)
+	{
+		ThrowNativeError(SP_ERROR_INDEX, "Client index %i is invalid", client);
+		return -1;
+	}
+	if (!IsClientInGame(client))
+	{
+		ThrowNativeError(SP_ERROR_NOT_FOUND, "Client %i is not in game", client);
+		return -1;
+	}
+
+	int iNativeAmount = GetNativeCell(2);
+	bool g_bLimit = GetNativeCell(3);
+
+	if (iNativeAmount <= 0)
+		return g_iAmountLeft[client];
+
+	if (g_iAmountLeft[client] < 0)
+		return -1;
+
+	g_iAmountLeft[client] += iNativeAmount;
+
+	if (g_bLimit && g_iAmountLeft[client] > g_iClientsMaxLimit[client])
+		g_iAmountLeft[client] = g_iClientsMaxLimit[client];
+
+	return g_iAmountLeft[client];
+}
+
+public int Native_SetMines(Handle plugin, int numParams)
+{
+	int client = GetNativeCell(1);
+
+	if (client < 1 || client > MaxClients)
+	{
+		ThrowNativeError(SP_ERROR_INDEX, "Client index %i is invalid", client);
+		return -1;
+	}
+	if (!IsClientInGame(client))
+	{
+		ThrowNativeError(SP_ERROR_NOT_FOUND, "Client %i is not in game", client);
+		return -1;
+	}
+
+	int iNativeAmount = GetNativeCell(2);
+	bool bLimit = GetNativeCell(3);
+
+	if (iNativeAmount < -1)
+		iNativeAmount = -1;
+
+	g_iAmountLeft[client] = iNativeAmount;
+
+	if (bLimit && g_iAmountLeft[client] > g_iClientsMaxLimit[client])
+		g_iAmountLeft[client] = g_iClientsMaxLimit[client];
+
+	return 0;
+}
+
+public int Native_SubstractMines(Handle plugin, int numParams)
+{
+	int client = GetNativeCell(1);
+
+	if (client < 1 || client > MaxClients)
+	{
+		ThrowNativeError(SP_ERROR_INDEX, "Client index %i is invalid", client);
+		return 0;
+	}
+	if (!IsClientInGame(client))
+	{
+		ThrowNativeError(SP_ERROR_NOT_FOUND, "Client %i is not in game", client);
+		return 0;
+	}
+
+	int g_iNativeAmount = GetNativeCell(2);
+
+	if (g_iAmountLeft[client] == -1 || g_iNativeAmount <= 0)
+		return g_iAmountLeft[client];
+
+	g_iAmountLeft[client] -= g_iNativeAmount;
+
+	if (g_iAmountLeft[client] < 0)
+		g_iAmountLeft[client] = 0;
+
+	return g_iAmountLeft[client];
 }
 
 Handle TraceRay(int client)
 {
-	float fStart[3];
-	float fAngle[3];
-	float fEnd[3];
+	float fStart[3], fAngle[3], fEnd[3];
 
 	GetClientEyePosition(client, fStart);
 	GetClientEyeAngles(client, fAngle);
@@ -405,516 +794,129 @@ Handle TraceRay(int client)
 
 public bool FilterPlayers(int entity, int contentsMask)
 {
-	return !(1 <= entity <= MaxClients);
+	return (entity < 1 || entity > MaxClients);
 }
 
-void PickupLasermine(int client, int lasermine)
-{
-	if(g_iClientsAmount[client] >= 0 && g_iClientsAmount[client] == ZR_AddClientLasermines(client))
-	{
-		return;
-	}
-
-	AcceptEntityInput(lasermine, "KillHierarchy");
-
-	if (g_iClientsAmount[client] >= 0)
-	{
-		PrintHintText(client, "%t", "MineAmount", g_iClientsAmount[client]);
-	}
-
-	else
-	{
-		PrintHintText(client, "%t", "InfiniteMines");
-	}
-
-	EmitSoundToClient(client, SND_PICKUPMINE);
-}
-
-int PlantMine(int client, float activation_delay = 0.0, int explode_damage, int explode_radius, const int color[3] = {255, 255, 255})
-{
-	if(activation_delay > 10.0)
-	{
-		activation_delay = 10.0;
-	}
-
-	else if(activation_delay < 0.0)
-	{
-		activation_delay = 0.0;
-	}
-
-	Handle g_hTrace = TraceRay(client);
-
-	float fEnd[3];
-	float fNormal[3];
-	float fBeamEnd[3];
-	
-	if(TR_DidHit(g_hTrace) && TR_GetEntityIndex(g_hTrace) < 1)
-	{
-		TR_GetEndPosition(fEnd, g_hTrace);
-		TR_GetPlaneNormal(g_hTrace, fNormal);
-
-		delete g_hTrace;
-
-		GetVectorAngles(fNormal, fNormal);
-
-		TR_TraceRayFilter(fEnd, fNormal, CONTENTS_SOLID, RayType_Infinite, FilterAll);
-		TR_GetEndPosition(fBeamEnd, null);
-
-		int g_iMineEnt = CreateEntityByName("prop_physics_override");
-		if(g_iMineEnt == -1 || !IsValidEdict(g_iMineEnt))
-		{
-			LogError("Could not create entity \"prop_physics_override\"");
-			return -1;
-		}
-
-		int g_iBeamEnt = CreateEntityByName("env_beam");
-		if(g_iBeamEnt == -1 || !IsValidEdict(g_iBeamEnt))
-		{
-			LogError("Could not create entity \"env_beam\"");
-			return -1;
-		}
-
-		char Start[32], Temp[256], Buffer[16];
-
-		Format(Start, sizeof(Start), "Beam%i", g_iBeamEnt);
-
-		SetEntityModel(g_iMineEnt, MDL_MINE);
-
-		IntToString(explode_damage, Buffer, sizeof(Buffer));
-		DispatchKeyValue(g_iMineEnt, "ExplodeDamage", Buffer);
-		IntToString(explode_radius, Buffer, sizeof(Buffer));
-		DispatchKeyValue(g_iMineEnt, "ExplodeRadius", Buffer);
-
-		DispatchKeyValue(g_iMineEnt, "spawnflags", "3");
-		DispatchSpawn(g_iMineEnt);
-
-		AcceptEntityInput(g_iMineEnt, "DisableMotion");
-		SetEntityMoveType(g_iMineEnt, MOVETYPE_NONE);
-		TeleportEntity(g_iMineEnt, fEnd, fNormal, NULL_VECTOR);
-
-		/*
-		PrintToChat(client, "%f %f %f", fNormal[0], fNormal[1], fNormal[2]);
-
-		if(fNormal[0] >= 270.0 || (fNormal[0] != 0.0 && fNormal[0] < 270.0))
-		{
-			PrintHintText(client, "%t", "InvalidLocation");
-			RemoveEntity(g_iMineEnt);
-			return -1;
-		}
-		*/
-
-		float fTarget[3], fOrigin[3];
-		int g_iTemp = -1;
-		char PropModel[128];
-
-		while((g_iTemp = FindEntityByClassname(g_iTemp, "prop_physi*")) != -1)
-		{
-			if(IsValidEntity(g_iTemp))
-			{
-				if(g_iTemp != g_iMineEnt)
-				{
-					GetEntPropString(g_iTemp, Prop_Data, "m_ModelName", PropModel, sizeof(PropModel));
-					if(StrEqual(PropModel, "models/props/cs_militia/dryer.mdl"))
-					{
-						GetEntPropVector(g_iTemp, Prop_Data, "m_vecOrigin", fTarget);
-						GetEntPropVector(g_iMineEnt, Prop_Data, "m_vecOrigin", fOrigin);
-						if(GetVectorDistance(fTarget, fOrigin) <= 35.0)
-						{
-							RemoveEntity(g_iMineEnt);
-							return -1;
-						}
-					}
-				}
-			}
-		}
-
-		SetEntProp(g_iMineEnt, Prop_Data, "m_nSolidType", 6);
-		SetEntProp(g_iMineEnt, Prop_Data, "m_CollisionGroup", 11);
-
-		Format(Temp, sizeof(Temp), "%s,Kill,,0,-1", Start);
-		DispatchKeyValue(g_iMineEnt, "OnBreak", Temp);
-
-		EmitSoundToAll(SND_PUTMINE, g_iMineEnt);
-
-		DispatchKeyValue(g_iBeamEnt, "targetname", Start);
-		DispatchKeyValue(g_iBeamEnt, "damage", "0");
-		DispatchKeyValue(g_iBeamEnt, "framestart", "0");
-		DispatchKeyValue(g_iBeamEnt, "BoltWidth", "4.0");
-		DispatchKeyValue(g_iBeamEnt, "renderfx", "0");
-		DispatchKeyValue(g_iBeamEnt, "TouchType", "3"); // 0 = none, 1 = player only, 2 = NPC only, 3 = player or NPC, 4 = player, NPC or physprop
-		DispatchKeyValue(g_iBeamEnt, "framerate", "0");
-		DispatchKeyValue(g_iBeamEnt, "decalname", "Bigshot");
-		DispatchKeyValue(g_iBeamEnt, "TextureScroll", "35");
-		DispatchKeyValue(g_iBeamEnt, "HDRColorScale", "1.0");
-		DispatchKeyValue(g_iBeamEnt, "texture", MDL_LASER);
-		DispatchKeyValue(g_iBeamEnt, "life", "0"); // 0 = infinite, beam life time in seconds
-		DispatchKeyValue(g_iBeamEnt, "StrikeTime", "1"); // If beam life time not infinite, this repeat it back
-		DispatchKeyValue(g_iBeamEnt, "LightningStart", Start);
-		DispatchKeyValue(g_iBeamEnt, "spawnflags", "0"); // 0 disable, 1 = start on, etc etc. look from hammer editor
-		DispatchKeyValue(g_iBeamEnt, "NoiseAmplitude", "0"); // straight beam = 0, other make noise beam
-		DispatchKeyValue(g_iBeamEnt, "Radius", "256");
-		DispatchKeyValue(g_iBeamEnt, "renderamt", "100");
-		DispatchKeyValue(g_iBeamEnt, "rendercolor", "0 0 0");
-
-		AcceptEntityInput(g_iBeamEnt, "TurnOff");
-
-		SetEntityModel(g_iBeamEnt, MDL_LASER);
-
-		TeleportEntity(g_iBeamEnt, fBeamEnd, NULL_VECTOR, NULL_VECTOR); // Teleport the beam
-
-		SetEntPropVector(g_iBeamEnt, Prop_Data, "m_vecEndPos", fEnd);
-		SetEntPropFloat(g_iBeamEnt, Prop_Data, "m_fWidth", 3.0);
-		SetEntPropFloat(g_iBeamEnt, Prop_Data, "m_fEndWidth", 3.0);
-
-		SetEntPropEnt(g_iBeamEnt, Prop_Data, "m_hOwnerEntity", client); // Sets the owner of the beam
-		SetEntPropEnt(g_iMineEnt, Prop_Data, "m_hMoveChild", g_iBeamEnt);
-		SetEntPropEnt(g_iBeamEnt, Prop_Data, "m_hEffectEntity", g_iMineEnt);
-
-		DataPack g_hDatapack = new DataPack();
-		g_hDatapack.WriteCell(g_iBeamEnt);
-		g_hDatapack.WriteCell(g_iMineEnt);
-		g_hDatapack.WriteCell(color[0]);
-		g_hDatapack.WriteCell(color[1]);
-		g_hDatapack.WriteCell(color[2]);
-		g_hDatapack.WriteString(Start);
-		CreateTimer(activation_delay, OnActivateLaser, g_hDatapack, TIMER_FLAG_NO_MAPCHANGE|TIMER_HNDL_CLOSE);
-
-		SetEntPropEnt(g_iMineEnt, Prop_Send, "m_PredictableID", client);
-
-		SDKHook(g_iMineEnt, SDKHook_OnTakeDamage, OnTakeDamage);
-
-		TrackMine(client, g_iMineEnt);
-
-		return g_iMineEnt;
-	}
-	
-	else
-	{
-		delete g_hTrace;
-	}
-
-	return -1;
-}
-
-public bool FilterAll(int entity, int contentsMask)
-{
-	return false;
-}
-
-public Action OnTakeDamage(int victim, int& attacker, int& inflictor, float& damage, int& damagetype)
-{
-	if(ZR_IsEntityLasermine(victim))
-	{
-		if(1 <= attacker <= MaxClients)
-		{
-			int client = ZR_GetClientByLasermine(victim);
-			
-			if((client != -1) && (client != attacker) && ZR_IsClientHuman(attacker))
-			{
-				return Plugin_Handled;
-			}
-
-			return Plugin_Continue;
-		}
-
-		else if (!ZR_IsEntityLasermine(inflictor))
-		{
-			return Plugin_Handled;
-		}
-	}
-
-	return Plugin_Continue;
-}
-
-public Action OnActivateLaser(Handle Timer, DataPack hDataPack)
-{
-	hDataPack.Reset();
-
-	char Start[32], Temp[256];
-	int g_iColor[3];
-
-	int g_iBeamEnt = hDataPack.ReadCell();
-	int g_iEnt = hDataPack.ReadCell();
-	g_iColor[0] = hDataPack.ReadCell();
-	g_iColor[1] = hDataPack.ReadCell();
-	g_iColor[2] = hDataPack.ReadCell();
-	hDataPack.ReadString(Start, sizeof(Start));
-
-	if (!IsValidEdict(g_iBeamEnt) || !IsValidEdict(g_iEnt))
-	{
-		return Plugin_Stop;
-	}
-
-	AcceptEntityInput(g_iBeamEnt, "TurnOn");
-
-	SetEntityRenderColor(g_iBeamEnt, g_iColor[0], g_iColor[1], g_iColor[2]);
-
-	Format(Temp, sizeof(Temp), "%s,TurnOff,,0.001,-1", Start);
-	DispatchKeyValue(g_iBeamEnt, "OnTouchedByEntity", Temp);
-	Format(Temp, sizeof(Temp), "%s,TurnOn,,0.002,-1", Start);
-	DispatchKeyValue(g_iBeamEnt, "OnTouchedByEntity", Temp);
-
-	EmitSoundToAll(SND_MINEACTIVATED, g_iEnt);
-
-	return Plugin_Stop;
-}
-
-public any Native_AddMines(Handle plugin, int numParams)
+public int Native_GetMines(Handle plugin, int numParams)
 {
 	int client = GetNativeCell(1);
-	
+
 	if (client < 1 || client > MaxClients)
 	{
 		ThrowNativeError(SP_ERROR_INDEX, "Client index %i is invalid", client);
 		return 0;
 	}
-
-	else if(!IsClientInGame(client))
+	if (!IsClientInGame(client))
 	{
 		ThrowNativeError(SP_ERROR_NOT_FOUND, "Client %i is not in game", client);
 		return 0;
 	}
 
-	int g_iNativeAmount = GetNativeCell(2);
-	bool g_bLimit = GetNativeCell(3);
+	return g_iAmountLeft[client];
+}
 
-	if(g_iNativeAmount <= 0)
-	{
-		return g_iClientsAmount[client];
-	}
+public int Native_ClearMapMines(Handle plugin, int numParams)
+{
+	int client = GetNativeCell(1);
 
-	if(g_iClientsAmount[client] < 0)
+	if (client < 1 || client > MaxClients)
 	{
+		ThrowNativeError(SP_ERROR_INDEX, "Client index %i is invalid", client);
 		return -1;
 	}
-
-	g_iClientsAmount[client] += g_iNativeAmount;
-
-	if(g_bLimit)
-	{
-		if(g_iClientsAmount[client] > g_iClientsMaxLimit[client])
-		{
-			g_iClientsAmount[client] = g_iClientsMaxLimit[client];
-		}
-	}
-
-	return g_iClientsAmount[client];
-}
-
-public any Native_SetMines(Handle plugin, int numParams)
-{
-	int client = GetNativeCell(1);
-
-	if(client < 1 || client > MaxClients)
-	{
-		ThrowNativeError(SP_ERROR_INDEX, "Client index %i is invalid", client);
-		return false;
-	}
-
-	else if(!IsClientInGame(client))
+	if (!IsClientInGame(client))
 	{
 		ThrowNativeError(SP_ERROR_NOT_FOUND, "Client %i is not in game", client);
-		return false;
-	}
-
-	int g_iNativeAmount = GetNativeCell(2);
-	bool g_bLimit = GetNativeCell(3);
-	
-	if (g_iNativeAmount < -1)
-	{
-		g_iNativeAmount = -1;
-	}
-
-	g_iClientsAmount[client] = g_iNativeAmount;
-
-	if(g_bLimit)
-	{
-		if(g_iClientsAmount[client] > g_iClientsMaxLimit[client])
-		{
-			g_iClientsAmount[client] = g_iClientsMaxLimit[client];
-		}
-	}
-
-	return true;
-}
-
-public any Native_SubstractMines(Handle plugin, int numParams)
-{
-	int client = GetNativeCell(1);
-
-	if(client < 1 || client > MaxClients)
-	{
-		ThrowNativeError(SP_ERROR_INDEX, "Client index %i is invalid", client);
-		return 0;
-	}
-
-	else if(!IsClientInGame(client))
-	{
-		ThrowNativeError(SP_ERROR_NOT_FOUND, "Client %i is not in game", client);
-		return 0;
-	}
-
-	int g_iNativeAmount = GetNativeCell(2);
-	
-	if(g_iClientsAmount[client] == -1)
-	{
-		return g_iClientsAmount[client];
-	}
-
-	if(g_iNativeAmount <= 0)
-	{
-		return g_iClientsAmount[client];
-	}
-
-	g_iClientsAmount[client] -= g_iNativeAmount;
-	
-	if(g_iClientsAmount[client] < 0)
-	{
-		g_iClientsAmount[client] = 0;
-	}
-
-	return g_iClientsAmount[client];
-}
-
-public any Native_GetMines(Handle plugin, int numParams)
-{
-	int client = GetNativeCell(1);
-
-	if(client < 1 || client > MaxClients)
-	{
-		ThrowNativeError(SP_ERROR_INDEX, "Client index %i is invalid", client);
-		return 0;
-	}
-
-	else if(!IsClientInGame(client))
-	{
-		ThrowNativeError(SP_ERROR_NOT_FOUND, "Client %i is not in game", client);
-		return 0;
-	}
-
-	return g_iClientsAmount[client];
-}
-
-public any Native_ClearMapMines(Handle plugin, int numParams)
-{
-	int client = GetNativeCell(1);
-
-	if(client < 1 || client > MaxClients)
-	{
-		ThrowNativeError(SP_ERROR_INDEX, "Client index %i is invalid", client);
-		return 0;
-	}
-
-	else if(!IsClientInGame(client))
-	{
-		ThrowNativeError(SP_ERROR_NOT_FOUND, "Client %i is not in game", client);
-		return 0;
+		return -1;
 	}
 
 	OnClientDisconnect(client);
-
-	return -1;
+	return 0;
 }
 
-public any Native_IsLasermine(Handle plugin, int numParams)
+public int Native_IsLasermine(Handle plugin, int numParams)
 {
-	int g_iEnt = GetNativeCell(1);
+	int iEnt = GetNativeCell(1);
 
-	if(g_iEnt <= MaxClients || !IsValidEdict(g_iEnt))
-	{
+	if (iEnt <= MaxClients || !IsValidEdict(iEnt))
 		return false;
-	}
 
 	char ModelName[PLATFORM_MAX_PATH];
-	GetEntPropString(g_iEnt, Prop_Data, "m_ModelName", ModelName, sizeof(ModelName));
+	GetEntPropString(iEnt, Prop_Data, "m_ModelName", ModelName, sizeof(ModelName));
 
-	return(StrEqual(ModelName, MDL_MINE, false) && GetEntPropEnt(g_iEnt, Prop_Data, "m_hMoveChild") != -1);
+	return(strcmp(ModelName, MDL_MINE, false) == 0 && GetEntPropEnt(iEnt, Prop_Data, "m_hMoveChild") != -1);
 }
 
-public any Native_GetClientByLasermine(Handle plugin, int numParams)
+public int Native_GetClientByLasermine(Handle plugin, int numParams)
 {
-	int g_iEnt = GetNativeCell(1);
-	int g_iBeamEnt;
+	int iEnt = GetNativeCell(1);
+	int iBeamEnt = ZR_GetBeamByLasermine(iEnt);
 
-	if ((g_iBeamEnt = ZR_GetBeamByLasermine(g_iEnt)) == -1)
+	if (iBeamEnt == -1)
+		return -1;
+
+	return GetEntPropEnt(iBeamEnt, Prop_Data, "m_hOwnerEntity");
+}
+
+public int Native_SetClientMaxLasermines(Handle plugin, int numParams)
+{
+	int client = GetNativeCell(1);
+	if (client < 1 || client > MaxClients)
 	{
+		ThrowNativeError(SP_ERROR_INDEX, "Client index %i is invalid", client);
+		return -1;
+	}
+	if (!IsClientAuthorized(client))
+	{
+		ThrowNativeError(SP_ERROR_NOT_FOUND, "Client %i is not authorized", client);
 		return -1;
 	}
 
-	return GetEntPropEnt(g_iBeamEnt, Prop_Data, "m_hOwnerEntity");
+	int iNativeAmount = GetNativeCell(2);
+
+	if (iNativeAmount < 0)
+	{
+		g_iClientsMaxLimit[client] = g_cvMaxMineAmount.IntValue;
+		g_iClientsMyAmount[client] = g_cvSpawnMineAmount.IntValue;
+	}
+
+	g_iClientsMaxLimit[client] = iNativeAmount;
+	g_iClientsMyAmount[client] = iNativeAmount;
+	g_bUsedByNative[client] = true;
+
+	return 0;
 }
 
-public any Native_SetClientMaxLasermines(Handle plugin, int numParams)
+public int Native_ResetClientMaxLasermines(Handle plugin, int numParams)
 {
 	int client = GetNativeCell(1);
-
-	if(client < 1 || client > MaxClients)
+	if (client < 1 || client > MaxClients)
 	{
 		ThrowNativeError(SP_ERROR_INDEX, "Client index %i is invalid", client);
-		return 0;
+		return -1;
 	}
-
-	else if(!IsClientAuthorized(client))
-	{
-		ThrowNativeError(SP_ERROR_NOT_FOUND, "Client %i is not authorized", client);
-		return 0;
-	}
-
-	int g_iNativeAmount = GetNativeCell(2);
-
-	if (g_iNativeAmount < -1)
-	{
-		g_iNativeAmount = -1;
-	}
-
-	g_iClientsMaxLimit[client] = g_iNativeAmount;
-	g_iClientsMyAmount[client] = g_iNativeAmount;
-	g_iUsedByNative[client] = true;
-
-	return -1;
-}
-
-public any Native_ResetClientMaxLasermines(Handle plugin, int numParams)
-{
-	int client = GetNativeCell(1);
-
-	if(client < 1 || client > MaxClients)
-	{
-		ThrowNativeError(SP_ERROR_INDEX, "Client index %i is invalid", client);
-	}
-
-	else if(!IsClientConnected(client))
+	if (!IsClientConnected(client))
 	{
 		ThrowNativeError(SP_ERROR_NOT_FOUND, "Client %i is not connected", client);
+		return -1;
 	}
 
 	OnClientConnected(client);
-
-	return -1;
+	return 0;
 }
 
-public any Native_GetBeamByLasermine(Handle plugin, int numParams)
+public int Native_GetBeamByLasermine(Handle plugin, int numParams)
 {
-	int g_iEnt = GetNativeCell(1);
+	int iEnt = GetNativeCell(1);
+	if (!ZR_IsEntityLasermine(iEnt))
+		return -1;
 
-	if(ZR_IsEntityLasermine(g_iEnt))
-	{
-		return GetEntPropEnt(g_iEnt, Prop_Data, "m_hMoveChild");
-	}
-
-	return -1;
+	return GetEntPropEnt(iEnt, Prop_Data, "m_hMoveChild");
 }
 
-public any Native_GetLasermineByBeam(Handle plugin, int numParams)
+public int Native_GetLasermineByBeam(Handle plugin, int numParams)
 {
-	int g_iMine = GetEntPropEnt(GetNativeCell(1), Prop_Data, "m_hEffectEntity");
-	
-	if (g_iMine != -1 && ZR_IsEntityLasermine(g_iMine))
-	{
-		return g_iMine;
-	}
-
-	return -1;
+	return GetEntPropEnt(GetNativeCell(1), Prop_Data, "m_hEffectEntity");
 }
 
 bool IsValidClient(int client)
@@ -922,7 +924,7 @@ bool IsValidClient(int client)
 	return(IsClientInGame(client) && IsPlayerAlive(client) && GetClientTeam(client) == CS_TEAM_CT);
 }
 
-bool AccessToLasermines(int client)
+bool TraceRay_FilterAll(int entity, int mask, any data)
 {
-	return(CheckCommandAccess(client, "zr_lasermines_access", ADMFLAG_CUSTOM1, true) || CheckCommandAccess(client, "zr_lasermines_access", ADMFLAG_GENERIC, true));
+	return false;
 }
