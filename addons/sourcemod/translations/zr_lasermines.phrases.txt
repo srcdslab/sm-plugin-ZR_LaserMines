@@ -10,16 +10,6 @@
 		"pt" "{green}[SM] {white}Você precisa ser humano para usar este comando."
 		"chi" "{green}[SM] {white}你必须是人类才能使用此命令。"
 	}
-	"NoAccess"
-	{
-		"en" "{green}[SM] {white}This command requires VIP access."
-		"fr" "{green}[SM] {white}Cette commande nécessite un accès VIP."
-		"ru" "{green}[SM] {white}Для этой команды требуется VIP-доступ."
-		"es" "{green}[SM] {white}Este comando requiere acceso VIP."
-		"de" "{green}[SM] {white}Dieser Befehl erfordert VIP-Zugang."
-		"pt" "{green}[SM] {white}Este comando requer acesso VIP."
-		"chi" "{green}[SM] {white}此命令需要VIP权限。"
-	}
 	"InfiniteMines"
 	{
 		"en" "You have an infinite amount of lasermines."
@@ -41,14 +31,98 @@
 		"pt" "Minas laser: {1}"
 		"chi" "激光地雷：{1}"
 	}
-	"InvalidLocation"
+	"PickUpInfo"
 	{
-		"en" "Hint: place the lasermine on a wall."
-		"fr" "Astuce : placez la mine laser sur un mur."
-		"ru" "Подсказка: устанавливайте лазерную мину на стену."
-		"es" "Consejo: coloca la mina láser en una pared."
-		"de" "Tipp: Platziere die Lasermine an einer Wand."
-		"pt" "Dica: coloque a mina laser em uma parede."
-		"chi" "提示：请将激光地雷放置在墙上。"
+		"en" "*** Tip: shoot the lasermine to pick it up ***"
+		"fr" "*** Astuce : tirez sur la mine laser pour la ramasser ***"
+		"ru" "*** Подсказка: выстрелите в лазерную мину, чтобы подобрать её ***"
+		"es" "*** Consejo: dispara a la mina láser para recogerla ***"
+		"de" "*** Tipp: Schieße auf die Lasermine, um sie aufzuheben ***"
+		"pt" "*** Dica: atire na mina laser para pegá-la ***"
+		"chi" "*** 提示：射击激光地雷即可将其捡起 ***"
+	}
+	"PlayerPropHP"
+	{
+		"#format" "{1:d},{2:N},{3:t}"
+		"en" "Health: {1} [Owner: {2} ({3})]"
+		"fr" "Santé : {1} [Propriétaire : {2} ({3})]"
+		"ru" "Здоровье: {1} [Владелец: {2} ({3})]"
+		"es" "Salud: {1} [Dueño: {2} ({3})]"
+		"de" "Gesundheit: {1} [Besitzer: {2} ({3})]"
+		"pt" "Vida: {1} [Dono: {2} ({3})]"
+		"chi" "生命值：{1} [所有者：{2} ({3})]"
+	}
+	"Human"
+	{
+		"en" "Human"
+		"fr" "Humain"
+		"ru" "Человек"
+		"es" "Humano"
+		"de" "Mensch"
+		"pt" "Humano"
+		"chi" "人类"
+	}
+
+	// Clients prefs
+	"Menu Prefix"
+	{
+		"en" "[ZR LaserMines]"
+		"fr" "[ZR Mines Laser]"
+		"ru" "[ZR Лазерные мины]"
+		"es" "[ZR Minas Láser]"
+		"de" "[ZR Laserminen]"
+		"pt" "[ZR Minas Laser]"
+		"chi" "[ZR 激光地雷]"
+	}
+	"Client Setting"
+	{
+		"en" "Client Settings"
+		"fr" "Paramètres du client"
+		"ru" "Настройки клиента"
+		"es" "Ajustes del cliente"
+		"de" "Client-Einstellungen"
+		"pt" "Configurações do cliente"
+		"chi" "客户端设置"
+	}
+	"Shortcut"
+	{
+		"en" "Shortcut Keys"
+		"fr" "Touches de raccourci"
+		"ru" "Шорткат"
+		"es" "Teclas de acceso rápido"
+		"de" "Tastenkürzel"
+		"pt" "Teclas de atalho"
+		"chi" "快捷键"
+	}
+	"You set shortcut"
+	{
+		"#format" "{1:s}"
+		"en" "You have {1} {default}LaserMines shortcut key. (Flashlight x2)"
+		"fr" "Raccourci des mines laser : {1}{default}. (Lampe torche x2)"
+		"ru" "Клавиша быстрой установки лазерных мин: {1}{default}. (Фонарик x2)"
+		"es" "Tecla rápida de minas láser: {1}{default}. (Linterna x2)"
+		"de" "Lasermine-Tastenkürzel: {1}{default}. (Taschenlampe x2)"
+		"pt" "Tecla de atalho das minas laser: {1}{default}. (Lanterna x2)"
+		"chi" "激光地雷快捷键：{1}{default}。（手电筒 x2）"
+	}
+	"Enabled"
+	{
+		"en" "Enabled"
+		"fr" "Activé"
+		"ru" "Включено"
+		"es" "Activado"
+		"de" "Aktiviert"
+		"pt" "Ativado"
+		"chi" "已启用"
+	}
+	"Disabled"
+	{
+		"en" "Disabled"
+		"fr" "Désactivé"
+		"ru" "Выключено"
+		"es" "Desactivado"
+		"de" "Deaktiviert"
+		"pt" "Desativado"
+		"chi" "已禁用"
 	}
 }
