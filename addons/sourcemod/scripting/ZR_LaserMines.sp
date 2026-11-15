@@ -19,7 +19,7 @@
 #pragma semicolon 1
 #pragma newdecls required
 
-#define PLUGIN_VERSION "1.7.1"
+#define PLUGIN_VERSION "1.7.2"
 
 #define MDL_LASER "sprites/laser.vmt"
 #define MDL_MINE "models/props_lab/tpplug.mdl"
@@ -542,9 +542,11 @@ bool PlantMine(int client, float activation_delay = 0.0, int color[3] = {255, 25
 	else if (activation_delay < 0.0)
 		activation_delay = 0.0;
 
+	// Pass references, not indexes: if the mine or the beam is removed
+	// before activation, its index can be reused by another entity.
 	DataPack hDataPack = new DataPack();
-	hDataPack.WriteCell(iBeamEnt);
-	hDataPack.WriteCell(iMineEnt);
+	hDataPack.WriteCell(EntIndexToEntRef(iBeamEnt));
+	hDataPack.WriteCell(EntIndexToEntRef(iMineEnt));
 	hDataPack.WriteCell(color[0]);
 	hDataPack.WriteCell(color[1]);
 	hDataPack.WriteCell(color[2]);
@@ -624,14 +626,14 @@ public Action OnActivateLaser(Handle Timer, DataPack hDataPack)
 	char Start[32], Temp[256];
 	int iColor[3];
 
-	int iBeamEnt = hDataPack.ReadCell();
-	int iEnt = hDataPack.ReadCell();
+	int iBeamEnt = EntRefToEntIndex(hDataPack.ReadCell());
+	int iEnt = EntRefToEntIndex(hDataPack.ReadCell());
 	iColor[0] = hDataPack.ReadCell();
 	iColor[1] = hDataPack.ReadCell();
 	iColor[2] = hDataPack.ReadCell();
 	hDataPack.ReadString(Start, sizeof(Start));
 
-	if (!IsValidEdict(iBeamEnt) || !IsValidEdict(iEnt))
+	if (iBeamEnt == INVALID_ENT_REFERENCE || iEnt == INVALID_ENT_REFERENCE)
 		return Plugin_Stop;
 
 	AcceptEntityInput(iBeamEnt, "TurnOn");
