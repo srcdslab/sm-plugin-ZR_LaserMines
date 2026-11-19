@@ -19,7 +19,7 @@
 #pragma semicolon 1
 #pragma newdecls required
 
-#define PLUGIN_VERSION "1.7.2"
+#define PLUGIN_VERSION "1.7.3"
 
 #define MDL_LASER "sprites/laser.vmt"
 #define MDL_MINE "models/props_lab/tpplug.mdl"

@@ -9,6 +9,12 @@
 		"de" "{green}[SM] {white}Du musst ein Mensch sein, um diesen Befehl zu nutzen."
 		"pt" "{green}[SM] {white}Você precisa ser humano para usar este comando."
 		"chi" "{green}[SM] {white}你必须是人类才能使用此命令。"
+		"pl" "{green}[SM] {white}Musisz być człowiekiem, aby użyć tej komendy."
+		"tr" "{green}[SM] {white}Bu komutu kullanmak için insan olmalısın."
+		"it" "{green}[SM] {white}Devi essere un umano per usare questo comando."
+		"ua" "{green}[SM] {white}Ви повинні бути людиною, щоб використовувати цю команду."
+		"zho" "{green}[SM] {white}你必須是人類才能使用此指令。"
+		"cze" "{green}[SM] {white}Pro použití tohoto příkazu musíš být člověk."
 	}
 	"InfiniteMines"
 	{
@@ -19,6 +25,12 @@
 		"de" "Du hast unendlich viele Laserminen."
 		"pt" "Você tem minas laser infinitas."
 		"chi" "你拥有无限激光地雷。"
+		"pl" "Masz nieskończoną liczbę min laserowych."
+		"tr" "Sınırsız lazer mayının var."
+		"it" "Hai mine laser infinite."
+		"ua" "У вас нескінченна кількість лазерних мін."
+		"zho" "你擁有無限雷射地雷。"
+		"cze" "Máš nekonečný počet laserových min."
 	}
 	"MineAmount"
 	{
@@ -30,6 +42,12 @@
 		"de" "Laserminen: {1}"
 		"pt" "Minas laser: {1}"
 		"chi" "激光地雷：{1}"
+		"pl" "Miny laserowe: {1}"
+		"tr" "Lazer mayınları: {1}"
+		"it" "Mine laser: {1}"
+		"ua" "Лазерні міни: {1}"
+		"zho" "雷射地雷：{1}"
+		"cze" "Laserové miny: {1}"
 	}
 	"PickUpInfo"
 	{
@@ -40,6 +58,12 @@
 		"de" "*** Tipp: Schieße auf die Lasermine, um sie aufzuheben ***"
 		"pt" "*** Dica: atire na mina laser para pegá-la ***"
 		"chi" "*** 提示：射击激光地雷即可将其捡起 ***"
+		"pl" "*** Wskazówka: strzel w minę laserową, aby ją podnieść ***"
+		"tr" "*** İpucu: lazer mayınını almak için ona ateş et ***"
+		"it" "*** Consiglio: spara alla mina laser per raccoglierla ***"
+		"ua" "*** Підказка: вистрелте в лазерну міну, щоб підібрати її ***"
+		"zho" "*** 提示：射擊雷射地雷即可將其撿起 ***"
+		"cze" "*** Tip: střel do laserové miny, abys ji zvedl ***"
 	}
 	"PlayerPropHP"
 	{
@@ -51,6 +75,12 @@
 		"de" "Gesundheit: {1} [Besitzer: {2} ({3})]"
 		"pt" "Vida: {1} [Dono: {2} ({3})]"
 		"chi" "生命值：{1} [所有者：{2} ({3})]"
+		"pl" "Zdrowie: {1} [Właściciel: {2} ({3})]"
+		"tr" "Can: {1} [Sahip: {2} ({3})]"
+		"it" "Salute: {1} [Proprietario: {2} ({3})]"
+		"ua" "Здоров'я: {1} [Власник: {2} ({3})]"
+		"zho" "生命值：{1} [擁有者：{2} ({3})]"
+		"cze" "Zdraví: {1} [Majitel: {2} ({3})]"
 	}
 	"Human"
 	{
@@ -61,6 +91,12 @@
 		"de" "Mensch"
 		"pt" "Humano"
 		"chi" "人类"
+		"pl" "Człowiek"
+		"tr" "İnsan"
+		"it" "Umano"
+		"ua" "Людина"
+		"zho" "人類"
+		"cze" "Člověk"
 	}
 
 	// Clients prefs
@@ -73,6 +109,12 @@
 		"de" "[ZR Laserminen]"
 		"pt" "[ZR Minas Laser]"
 		"chi" "[ZR 激光地雷]"
+		"pl" "[ZR Miny Laserowe]"
+		"tr" "[ZR Lazer Mayınları]"
+		"it" "[ZR Mine Laser]"
+		"ua" "[ZR Лазерні міни]"
+		"zho" "[ZR 雷射地雷]"
+		"cze" "[ZR Laserové miny]"
 	}
 	"Client Setting"
 	{
@@ -83,6 +125,12 @@
 		"de" "Client-Einstellungen"
 		"pt" "Configurações do cliente"
 		"chi" "客户端设置"
+		"pl" "Ustawienia klienta"
+		"tr" "İstemci Ayarları"
+		"it" "Impostazioni client"
+		"ua" "Налаштування клієнта"
+		"zho" "客戶端設定"
+		"cze" "Nastavení klienta"
 	}
 	"Shortcut"
 	{
@@ -93,6 +141,12 @@
 		"de" "Tastenkürzel"
 		"pt" "Teclas de atalho"
 		"chi" "快捷键"
+		"pl" "Skróty klawiszowe"
+		"tr" "Kısayol Tuşları"
+		"it" "Tasti di scelta rapida"
+		"ua" "Гарячі клавіші"
+		"zho" "快速鍵"
+		"cze" "Klávesové zkratky"
 	}
 	"You set shortcut"
 	{
@@ -104,6 +158,12 @@
 		"de" "Lasermine-Tastenkürzel: {1}{default}. (Taschenlampe x2)"
 		"pt" "Tecla de atalho das minas laser: {1}{default}. (Lanterna x2)"
 		"chi" "激光地雷快捷键：{1}{default}。（手电筒 x2）"
+		"pl" "Skrót min laserowych: {1}{default}. (Latarka x2)"
+		"tr" "Lazer mayını kısayolu: {1}{default}. (El feneri x2)"
+		"it" "Scorciatoia mine laser: {1}{default}. (Torcia x2)"
+		"ua" "Клавіша швидкого встановлення лазерних мін: {1}{default}. (Ліхтарик x2)"
+		"zho" "雷射地雷快速鍵：{1}{default}。（手電筒 x2）"
+		"cze" "Zkratka laserových min: {1}{default}. (Baterka x2)"
 	}
 	"Enabled"
 	{
@@ -114,6 +174,12 @@
 		"de" "Aktiviert"
 		"pt" "Ativado"
 		"chi" "已启用"
+		"pl" "Włączone"
+		"tr" "Etkin"
+		"it" "Attivato"
+		"ua" "Увімкнено"
+		"zho" "已啟用"
+		"cze" "Zapnuto"
 	}
 	"Disabled"
 	{
@@ -124,5 +190,11 @@
 		"de" "Deaktiviert"
 		"pt" "Desativado"
 		"chi" "已禁用"
+		"pl" "Wyłączone"
+		"tr" "Devre dışı"
+		"it" "Disattivato"
+		"ua" "Вимкнено"
+		"zho" "已停用"
+		"cze" "Vypnuto"
 	}
 }
